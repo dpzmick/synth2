@@ -1,0 +1,2 @@
+- different number representation?
+    - all values are bt 0 and 1, need a type to represent this?
