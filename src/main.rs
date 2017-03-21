@@ -11,6 +11,7 @@ struct SineNote {
     frequency: f32,
     velocity: f32, /* 0 -> 1 */
     phase: usize,
+    note_on: bool // note will decay when it is no longer on, when note off, velocity will decay
 }
 
 impl SineNote {
@@ -19,17 +20,22 @@ impl SineNote {
             frequency,
             velocity,
             phase: 0,
+            note_on: true,
         }
     }
 }
 
 struct SineWaveGenerator {
     srate_constant: f32,
+    decay_constant: f32,
 }
 
 impl SineWaveGenerator {
     fn new(srate: f32) -> Self {
-        SineWaveGenerator { srate_constant: srate }
+        SineWaveGenerator {
+            srate_constant: srate,
+            decay_constant: 0.9999,
+        }
     }
 
     fn generate(&mut self, note: &mut SineNote) -> f32 {
@@ -41,8 +47,16 @@ impl SineWaveGenerator {
             note.phase += 1;
         }
 
+        if !note.note_on {
+            note.velocity = note.velocity * self.decay_constant;
+        }
+
         let x = note.phase as f32;
         note.velocity * (2.0 * std::f32::consts::PI * (note.frequency/self.srate_constant) * x).sin()
+    }
+
+    fn is_note_dead(&self, note: &SineNote) -> bool {
+        note.velocity < 0.01
     }
 }
 
@@ -82,27 +96,15 @@ impl EventManager {
     }
 
     pub fn note_off(&mut self, frequency: f32) {
-        // find the matching note and shut it down
-        let mut found = None;
-
-        for i in 0..self.events.len() {
-            match self.events[i] {
-                Some(note) => {
-                    if note.frequency == frequency {
-                        found = Some(i);
-                        break;
+        for note in self.events.iter_mut() {
+            match note.as_mut() {
+                Some(ref mut note) => {
+                    if note.frequency == frequency && note.note_on {
+                        (*note).note_on = false;
                     }
                 },
                 None => ()
             }
-        }
-
-        match found {
-            Some(idx) => {
-                println!("released {} for {}", idx, frequency);
-                self.events[idx] = None
-            },
-            None => ()
         }
     }
 
@@ -179,14 +181,22 @@ impl jack::ProcessHandler for AudioHandler {
             }
 
             let mut frame = 0.0;
-            for note in self.ev.iter_mut() {
-                match note.as_mut() {
-                    Some(note) => frame += self.generator.generate(note).min(1.0),
-                    None       => ()
+            for el in self.ev.iter_mut() {
+                if el.is_some() {
+                    let dead = {
+                        let note = el.as_mut().unwrap();
+                        frame += self.generator.generate(note).min(1.0);
+                        self.generator.is_note_dead(note)
+                    };
+
+                    if dead {
+                        println!("killed {}", el.unwrap().frequency);
+                        *el = None
+                    }
                 }
             }
 
-            output_buffer[i] = frame;
+            output_buffer[i] = frame.min(1.0).max(-1.0);
         }
 
         0
