@@ -4,7 +4,7 @@ version = "0.1.0"
 authors = ["David Zmick <dpzmick@gmail.com>"]
 
 [dependencies]
-easyjack = { path ="/home/dpzmick/programming/easyjack" }
+easyjack = { path ="/home/dpzmick/programming/rust-easyjack" }
 
 [dependencies.rimd]
 git = "https://github.com/nicklan/rimd.git"

@@ -4,6 +4,7 @@ extern crate rimd;
 use std::thread;
 use std::time::Duration;
 use std::f32;
+use std::slice::IterMut;
 
 #[derive(Copy, Clone)]
 struct SineNote {
@@ -45,7 +46,70 @@ impl SineWaveGenerator {
     }
 }
 
-// wave generators know the state of the system, but they don't know what notes are being played
+struct EventManager {
+    events: Vec<Option<SineNote>> // TODO better datatype
+}
+
+impl EventManager {
+    pub fn new(events: usize) -> Self {
+        let events = vec![None; events];
+        EventManager {
+            events
+        }
+    }
+
+    /// Find the next available location for a note
+    fn next_free_idx(&self) -> Option<usize> {
+        for i in 0..self.events.len() {
+            if self.events[i].is_none() {
+                return Some(i)
+            }
+        }
+
+        return None
+    }
+
+    pub fn note_on(&mut self, frequency: f32, velocity: f32) {
+        let note = SineNote::new(frequency, velocity);
+
+        match self.next_free_idx() {
+            Some(idx) => {
+                println!("picked {} for {}", idx, frequency);
+                self.events[idx] = Some(note)
+            },
+            None => ()
+        }
+    }
+
+    pub fn note_off(&mut self, frequency: f32) {
+        // find the matching note and shut it down
+        let mut found = None;
+
+        for i in 0..self.events.len() {
+            match self.events[i] {
+                Some(note) => {
+                    if note.frequency == frequency {
+                        found = Some(i);
+                        break;
+                    }
+                },
+                None => ()
+            }
+        }
+
+        match found {
+            Some(idx) => {
+                println!("released {} for {}", idx, frequency);
+                self.events[idx] = None
+            },
+            None => ()
+        }
+    }
+
+    pub fn iter_mut(&mut self) -> IterMut<Option<SineNote>> {
+        self.events.iter_mut()
+    }
+}
 
 type OPort = jack::OutputPortHandle<jack::DefaultAudioSample>;
 type IPort = jack::InputPortHandle<jack::MidiEvent>;
@@ -54,7 +118,7 @@ struct AudioHandler {
     input: IPort,
     output: OPort,
     generator: SineWaveGenerator,
-    notes: [Option<SineNote>; 64], // polyphony of 64
+    ev: EventManager
 }
 
 impl AudioHandler {
@@ -63,7 +127,7 @@ impl AudioHandler {
             input,
             output,
             generator,
-            notes: [None; 64]
+            ev: EventManager::new(64)
         }
     }
 
@@ -84,56 +148,26 @@ impl jack::ProcessHandler for AudioHandler {
 
         let mut event_index = 0;
         let event_count = input_buffer.len();
-        if event_count > 0 {
-            println!("event_count = {}", event_count);
-        }
-
-        for i in 0..event_count {
-            let event = input_buffer.get(i);
-            let buf = event.raw_midi_bytes();
-
-            let m = rimd::MidiMessage { data: buf.to_vec() };
-            println!("at time = {}, message {:?} = {:?}", event.get_jack_time(), m.status(), m);
-
-        }
 
         for i in 0..(nframes as usize) {
             if event_index < event_count {
-                loop {
-                    if event_index >= event_count { break; }
-
+                while event_index < event_count
+                    && input_buffer.get(event_index).get_jack_time() == (i as u32)
+                {
                     let event = input_buffer.get(event_index);
-                    if event.get_jack_time() > i as jack::NumFrames { break; }
-
                     let buf = event.raw_midi_bytes();
 
                     let m = rimd::MidiMessage { data: buf.to_vec() };
-                    println!("message {:?} = {:?}", m.status(), m);
-
                     match m.status() {
-                        rimd::Status::NoteOn => {
-                            // find the first open spot and use it
-                            for i in 0..64 {
-                                if self.notes[i].is_none() {
-                                    println!("picked i == {}", i);
-                                    self.notes[i] = Some(SineNote::new(
-                                            AudioHandler::midi_note_to_frequency(m.data[1]),
-                                            AudioHandler::midi_velocity_to_velocity(m.data[2])));
-                                    break;
-                                }
-                            }
+                        rimd::Status::NoteOff => {
+                            let f = AudioHandler::midi_note_to_frequency(m.data[1]);
+                            self.ev.note_off(f);
                         },
 
-                        rimd::Status::NoteOff => {
-                            for i in 0..64 {
-                                if self.notes[i].is_some() {
-                                    if self.notes[i].unwrap().frequency == AudioHandler::midi_note_to_frequency(m.data[1]) {
-                                        println!("cleared i == {}", i);
-                                        self.notes[i] = None
-                                    }
-                                }
-                            }
-                            self.notes[0] = None;
+                        rimd::Status::NoteOn => {
+                            let f = AudioHandler::midi_note_to_frequency(m.data[1]);
+                            let v = AudioHandler::midi_velocity_to_velocity(m.data[2]);
+                            self.ev.note_on(f, v);
                         },
 
                         _ => ()
@@ -141,13 +175,13 @@ impl jack::ProcessHandler for AudioHandler {
 
                     event_index += 1;
                 }
+
             }
 
             let mut frame = 0.0;
-
-            for note in self.notes.iter_mut() {
+            for note in self.ev.iter_mut() {
                 match note.as_mut() {
-                    Some(note) => frame += self.generator.generate(note),
+                    Some(note) => frame += self.generator.generate(note).min(1.0),
                     None       => ()
                 }
             }
