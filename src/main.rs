@@ -6,6 +6,24 @@ use std::time::Duration;
 use std::f32;
 use std::slice::IterMut;
 
+trait Note: Clone {
+    fn new(frequency: f32, velocity: f32) -> Self;
+
+    fn note_on(&self) -> bool;
+    fn set_note_on(&mut self);
+    fn set_note_off(&mut self);
+
+    fn frequency(&self) -> f32;
+}
+
+trait WaveGenerator {
+    type NoteType: Note;
+
+    fn new(srate: f32) -> Self;
+    fn generate(&mut self, note: &mut Self::NoteType) -> f32;
+    fn is_note_dead(&self, note: &Self::NoteType) -> bool;
+}
+
 #[derive(Copy, Clone)]
 struct SineNote {
     frequency: f32,
@@ -14,7 +32,7 @@ struct SineNote {
     note_on: bool // note will decay when it is no longer on, when note off, velocity will decay
 }
 
-impl SineNote {
+impl Note for SineNote {
     fn new(frequency: f32, velocity: f32) -> Self {
         SineNote {
             frequency,
@@ -23,6 +41,12 @@ impl SineNote {
             note_on: true,
         }
     }
+
+    fn note_on(&self) -> bool { self.note_on }
+    fn set_note_on(&mut self) { self.note_on = true }
+    fn set_note_off(&mut self) { self.note_on = false }
+
+    fn frequency(&self) -> f32 { self.frequency }
 }
 
 struct SineWaveGenerator {
@@ -30,7 +54,9 @@ struct SineWaveGenerator {
     decay_constant: f32,
 }
 
-impl SineWaveGenerator {
+impl WaveGenerator for SineWaveGenerator {
+    type NoteType = SineNote;
+
     fn new(srate: f32) -> Self {
         SineWaveGenerator {
             srate_constant: srate,
@@ -47,7 +73,7 @@ impl SineWaveGenerator {
             note.phase += 1;
         }
 
-        if !note.note_on {
+        if !note.note_on() {
             note.velocity = note.velocity * self.decay_constant;
         }
 
@@ -60,11 +86,104 @@ impl SineWaveGenerator {
     }
 }
 
-struct EventManager {
-    events: Vec<Option<SineNote>> // TODO better datatype
+struct SquareWaveGenerator {
+    sine_gen: SineWaveGenerator
 }
 
-impl EventManager {
+impl WaveGenerator for SquareWaveGenerator {
+    type NoteType = SineNote;
+
+    fn new(srate: f32) -> Self {
+        Self {
+            sine_gen: SineWaveGenerator::new(srate)
+        }
+    }
+
+    fn generate(&mut self, note: &mut SineNote) -> f32 {
+        let s = self.sine_gen.generate(note);
+        if s > 0.0 {
+            return 1.0 * note.velocity;
+        } else {
+            return -1.0 * note.velocity;
+        }
+    }
+
+    fn is_note_dead(&self, note: &SineNote) -> bool {
+        self.sine_gen.is_note_dead(note)
+    }
+}
+
+// simpler types is perhaps a good argument for associated type?
+struct WaveFusion<Gen1: WaveGenerator, Gen2: WaveGenerator> {
+    gen1: Gen1,
+    gen2: Gen2,
+}
+
+impl<Gen1: WaveGenerator, Gen2: WaveGenerator> WaveGenerator for WaveFusion<Gen1, Gen2> {
+    type NoteType = WaveFusionNote<
+        <Gen1 as WaveGenerator>::NoteType,
+        <Gen2 as WaveGenerator>::NoteType>;
+
+    fn new(srate: f32) -> Self {
+        Self {
+            gen1: Gen1::new(srate),
+            gen2: Gen2::new(srate),
+        }
+    }
+
+    fn generate(&mut self, note: &mut Self::NoteType) -> f32 {
+        let g1 = self.gen1.generate(&mut note.n1);
+        let g2 = self.gen2.generate(&mut note.n2);
+
+        (0.9 * g1) + (0.1 * g2)
+    }
+
+    fn is_note_dead(&self, note: &Self::NoteType) -> bool {
+        self.gen1.is_note_dead(&note.n1) && self.gen2.is_note_dead(&note.n2)
+    }
+}
+
+#[derive(Copy, Clone)]
+struct WaveFusionNote<N1: Note, N2: Note> {
+    n1: N1,
+    n2: N2,
+}
+
+impl<N1: Note, N2: Note> Note for WaveFusionNote<N1, N2> {
+    fn new(frequency: f32, velocity: f32) -> Self {
+        Self {
+            n1: N1::new(frequency, velocity),
+            n2: N2::new(frequency, velocity),
+        }
+    }
+
+    fn note_on(&self) -> bool {
+        // both notes will be kept in sync, if one is on, so is the other
+        self.n1.note_on()
+    }
+
+    fn set_note_on(&mut self) {
+        self.n1.set_note_on();
+        self.n2.set_note_on();
+    }
+
+    fn set_note_off(&mut self) {
+        self.n1.set_note_off();
+        self.n2.set_note_off();
+    }
+
+    fn frequency(&self) -> f32 {
+        // both notes constructed with the same frequency, they shouldn't be changing their
+        // frequencies, but this might not be a valid assertion to make
+        self.n1.frequency()
+    }
+}
+
+struct EventManager<T: Note> {
+    events: Vec<Option<T>>
+}
+
+impl<T: Note> EventManager<T> {
     pub fn new(events: usize) -> Self {
         let events = vec![None; events];
         EventManager {
@@ -84,7 +203,8 @@ impl EventManager {
     }
 
     pub fn note_on(&mut self, frequency: f32, velocity: f32) {
-        let note = SineNote::new(frequency, velocity);
+        // TODO move note creation out of here?
+        let note = T::new(frequency, velocity);
 
         match self.next_free_idx() {
             Some(idx) => {
@@ -99,8 +219,8 @@ impl EventManager {
         for note in self.events.iter_mut() {
             match note.as_mut() {
                 Some(ref mut note) => {
-                    if note.frequency == frequency && note.note_on {
-                        (*note).note_on = false;
+                    if note.frequency() == frequency && note.note_on() {
+                        note.set_note_off();
                     }
                 },
                 None => ()
@@ -108,7 +228,7 @@ impl EventManager {
         }
     }
 
-    pub fn iter_mut(&mut self) -> IterMut<Option<SineNote>> {
+    pub fn iter_mut(&mut self) -> IterMut<Option<T>> {
         self.events.iter_mut()
     }
 }
@@ -119,12 +239,15 @@ type IPort = jack::InputPortHandle<jack::MidiEvent>;
 struct AudioHandler {
     input: IPort,
     output: OPort,
-    generator: SineWaveGenerator,
-    ev: EventManager
+    generator: WaveFusion<SineWaveGenerator, SquareWaveGenerator>,
+    ev: EventManager<
+        WaveFusionNote<
+            <SineWaveGenerator as WaveGenerator>::NoteType,
+            <SquareWaveGenerator as WaveGenerator>::NoteType>>
 }
 
 impl AudioHandler {
-    pub fn new(input: IPort, output: OPort, generator: SineWaveGenerator) -> Self {
+    pub fn new(input: IPort, output: OPort, generator: WaveFusion<SineWaveGenerator, SquareWaveGenerator>) -> Self {
         AudioHandler {
             input,
             output,
@@ -135,6 +258,7 @@ impl AudioHandler {
 
     fn midi_note_to_frequency(note: u8) -> f32 {
         let a = 440.0;
+        // this is a magic formula from the internet
         (a / 32.0) * (2.0_f32.powf( (note as f32 - 9.0) / 12.0 ))
     }
 
@@ -190,13 +314,13 @@ impl jack::ProcessHandler for AudioHandler {
                     };
 
                     if dead {
-                        println!("killed {}", el.unwrap().frequency);
+                        println!("killed {}", el.unwrap().frequency());
                         *el = None
                     }
                 }
             }
 
-            output_buffer[i] = frame.min(1.0).max(-1.0);
+            output_buffer[i] = frame.min(0.9).max(-0.9);
         }
 
         0
@@ -204,7 +328,7 @@ impl jack::ProcessHandler for AudioHandler {
 }
 
 fn main() {
-    let gen = SineWaveGenerator::new(44100.0);
+    let gen = WaveFusion::<SineWaveGenerator, SquareWaveGenerator>::new(44100.0);
 
     let mut c = jack::Client::open("sine", jack::options::NO_START_SERVER).unwrap().0;
     let i = c.register_input_midi_port("midi_in").unwrap();
