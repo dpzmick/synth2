@@ -14,12 +14,19 @@ trait Note: Clone {
     fn set_note_off(&mut self);
 
     fn frequency(&self) -> f32;
+
+    fn set_phase_offset(&mut self, phase_offest: usize);
 }
 
 trait WaveGenerator {
     type NoteType: Note;
 
     fn new(srate: f32) -> Self;
+
+    fn new_note(&mut self, frequency: f32, velocity: f32) -> Self::NoteType {
+        Self::NoteType::new(frequency, velocity)
+    }
+
     fn generate(&mut self, note: &mut Self::NoteType) -> f32;
     fn is_note_dead(&self, note: &Self::NoteType) -> bool;
 }
@@ -47,6 +54,9 @@ impl Note for SineNote {
     fn set_note_off(&mut self) { self.note_on = false }
 
     fn frequency(&self) -> f32 { self.frequency }
+
+    // TODO check for wraparound?
+    fn set_phase_offset(&mut self, phase_offest: usize) { self.phase += phase_offest }
 }
 
 struct SineWaveGenerator {
@@ -117,6 +127,17 @@ impl WaveGenerator for SquareWaveGenerator {
 struct WaveFusion<Gen1: WaveGenerator, Gen2: WaveGenerator> {
     gen1: Gen1,
     gen2: Gen2,
+    phase_offest: usize,
+}
+
+impl<Gen1: WaveGenerator, Gen2: WaveGenerator> WaveFusion<Gen1, Gen2> {
+    fn phased_new(srate: f32, phase_offest: usize) -> Self {
+        Self {
+            gen1: Gen1::new(srate),
+            gen2: Gen2::new(srate),
+            phase_offest,
+        }
+    }
 }
 
 impl<Gen1: WaveGenerator, Gen2: WaveGenerator> WaveGenerator for WaveFusion<Gen1, Gen2> {
@@ -125,10 +146,16 @@ impl<Gen1: WaveGenerator, Gen2: WaveGenerator> WaveGenerator for WaveFusion<Gen1
         <Gen2 as WaveGenerator>::NoteType>;
 
     fn new(srate: f32) -> Self {
-        Self {
-            gen1: Gen1::new(srate),
-            gen2: Gen2::new(srate),
-        }
+        Self::phased_new(srate, 0)
+    }
+
+    fn new_note(&mut self, frequency: f32, velocity: f32) -> Self::NoteType {
+        let n1 = <Gen1 as WaveGenerator>::NoteType::new(frequency, velocity);
+        let mut n2 = <Gen2 as WaveGenerator>::NoteType::new(frequency, velocity);
+
+        n2.set_phase_offset(self.phase_offest);
+
+        Self::NoteType::phased_new(n1, n2)
     }
 
     fn generate(&mut self, note: &mut Self::NoteType) -> f32 {
@@ -147,6 +174,12 @@ impl<Gen1: WaveGenerator, Gen2: WaveGenerator> WaveGenerator for WaveFusion<Gen1
 struct WaveFusionNote<N1: Note, N2: Note> {
     n1: N1,
     n2: N2,
+}
+
+impl <N1: Note, N2: Note> WaveFusionNote<N1, N2> {
+    fn phased_new(n1: N1, n2: N2) -> Self {
+        Self { n1, n2 }
+    }
 }
 
 impl<N1: Note, N2: Note> Note for WaveFusionNote<N1, N2> {
@@ -177,6 +210,11 @@ impl<N1: Note, N2: Note> Note for WaveFusionNote<N1, N2> {
         // frequencies, but this might not be a valid assertion to make
         self.n1.frequency()
     }
+
+    fn set_phase_offset(&mut self, phase_offest: usize) {
+        self.n1.set_phase_offset(phase_offest);
+        self.n2.set_phase_offset(phase_offest);
+    }
 }
 
 struct EventManager<T: Note> {
@@ -202,13 +240,10 @@ impl<T: Note> EventManager<T> {
         return None
     }
 
-    pub fn note_on(&mut self, frequency: f32, velocity: f32) {
-        // TODO move note creation out of here?
-        let note = T::new(frequency, velocity);
-
+    pub fn note_on(&mut self, note: T) {
         match self.next_free_idx() {
             Some(idx) => {
-                println!("picked {} for {}", idx, frequency);
+                println!("picked {} for {}", idx, note.frequency());
                 self.events[idx] = Some(note)
             },
             None => ()
@@ -236,19 +271,26 @@ impl<T: Note> EventManager<T> {
 type OPort = jack::OutputPortHandle<jack::DefaultAudioSample>;
 type IPort = jack::InputPortHandle<jack::MidiEvent>;
 
-struct AudioHandler {
-    input: IPort,
-    output: OPort,
-    generator: WaveFusion<SineWaveGenerator, SquareWaveGenerator>,
-    ev: EventManager<
-        WaveFusionNote<
-            <SineWaveGenerator as WaveGenerator>::NoteType,
-            <SquareWaveGenerator as WaveGenerator>::NoteType>>
+fn midi_note_to_frequency(note: u8) -> f32 {
+    let a = 440.0;
+    // this is a magic formula from the internet
+    (a / 32.0) * (2.0_f32.powf( (note as f32 - 9.0) / 12.0 ))
 }
 
-impl AudioHandler {
-    pub fn new(input: IPort, output: OPort, generator: WaveFusion<SineWaveGenerator, SquareWaveGenerator>) -> Self {
-        AudioHandler {
+fn midi_velocity_to_velocity(vel: u8) -> f32 {
+    vel as f32 / (std::u8::MAX as f32)
+}
+
+struct AudioHandler<Gen: WaveGenerator> {
+    input: IPort,
+    output: OPort,
+    generator: Gen,
+    ev: EventManager< <Gen as WaveGenerator>::NoteType >,
+}
+
+impl<Gen: WaveGenerator> AudioHandler<Gen> {
+    pub fn new(input: IPort, output: OPort, generator: Gen) -> Self {
+        Self {
             input,
             output,
             generator,
@@ -256,18 +298,9 @@ impl AudioHandler {
         }
     }
 
-    fn midi_note_to_frequency(note: u8) -> f32 {
-        let a = 440.0;
-        // this is a magic formula from the internet
-        (a / 32.0) * (2.0_f32.powf( (note as f32 - 9.0) / 12.0 ))
-    }
-
-    fn midi_velocity_to_velocity(vel: u8) -> f32 {
-        vel as f32 / (std::u8::MAX as f32)
-    }
 }
 
-impl jack::ProcessHandler for AudioHandler {
+impl<Gen: WaveGenerator> jack::ProcessHandler for AudioHandler<Gen> {
     fn process(&mut self, ctx: &jack::CallbackContext, nframes: jack::NumFrames) -> i32 {
         let output_buffer = self.output.get_write_buffer(nframes, &ctx);
         let input_buffer  = self.input.get_read_buffer(nframes, &ctx);
@@ -286,14 +319,15 @@ impl jack::ProcessHandler for AudioHandler {
                     let m = rimd::MidiMessage { data: buf.to_vec() };
                     match m.status() {
                         rimd::Status::NoteOff => {
-                            let f = AudioHandler::midi_note_to_frequency(m.data[1]);
+                            let f = midi_note_to_frequency(m.data[1]);
                             self.ev.note_off(f);
                         },
 
                         rimd::Status::NoteOn => {
-                            let f = AudioHandler::midi_note_to_frequency(m.data[1]);
-                            let v = AudioHandler::midi_velocity_to_velocity(m.data[2]);
-                            self.ev.note_on(f, v);
+                            let f = midi_note_to_frequency(m.data[1]);
+                            let v = midi_velocity_to_velocity(m.data[2]);
+                            let note = self.generator.new_note(f, v);
+                            self.ev.note_on(note);
                         },
 
                         _ => ()
@@ -314,7 +348,6 @@ impl jack::ProcessHandler for AudioHandler {
                     };
 
                     if dead {
-                        println!("killed {}", el.unwrap().frequency());
                         *el = None
                     }
                 }
@@ -328,7 +361,7 @@ impl jack::ProcessHandler for AudioHandler {
 }
 
 fn main() {
-    let gen = WaveFusion::<SineWaveGenerator, SquareWaveGenerator>::new(44100.0);
+    let gen = WaveFusion::<SineWaveGenerator, SquareWaveGenerator>::phased_new(44100.0, 2048);
 
     let mut c = jack::Client::open("sine", jack::options::NO_START_SERVER).unwrap().0;
     let i = c.register_input_midi_port("midi_in").unwrap();
