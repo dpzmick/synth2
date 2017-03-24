@@ -1,16 +1,22 @@
 extern crate easyjack as jack;
 extern crate rimd;
+#[macro_use]
+extern crate generic_array;
 
 use std::thread;
 use std::time::Duration;
 use std::f32;
 use std::slice::Iter;
 use std::slice::IterMut;
-//use std::marker::PhantomData;
+use std::marker::PhantomData;
 use std::cell::{RefMut, RefCell};
 use std::process;
 
-trait Note: Clone {
+use generic_array::ArrayLength;
+use generic_array::GenericArray;
+use generic_array::typenum::{U2, U3};
+
+trait Note: Clone + Default {
     fn new(frequency: f32, velocity: f32) -> Self;
 
     fn note_on(&self) -> bool;
@@ -41,6 +47,12 @@ struct SineNote {
     velocity: f32, /* 0 -> 1 */
     phase: usize,
     note_on: bool // note will decay when it is no longer on, when note off, velocity will decay
+}
+
+impl Default for SineNote {
+    fn default() -> Self {
+        Self::new(0.0, 0.0)
+    }
 }
 
 impl Note for SineNote {
@@ -180,6 +192,12 @@ struct WaveFusionNote<N1: Note, N2: Note> {
     n2: N2,
 }
 
+impl<N1: Note, N2: Note> Default for WaveFusionNote<N1, N2> {
+    fn default() -> Self {
+        Self::new(0.0, 0.0)
+    }
+}
+
 impl <N1: Note, N2: Note> WaveFusionNote<N1, N2> {
     fn phased_new(n1: N1, n2: N2) -> Self {
         Self { n1, n2 }
@@ -221,39 +239,37 @@ impl<N1: Note, N2: Note> Note for WaveFusionNote<N1, N2> {
     }
 }
 
-struct HarmonicGen<T: WaveGenerator> {
+struct HarmonicGen<T: WaveGenerator, N: ArrayLength<usize>, N2: ArrayLength<<T as WaveGenerator>::NoteType>> {
     gen: T,
-    harmonics: Vec<usize>,
-    // slow path allocates storage for all of the notes
-    note_storage: Vec<<T as WaveGenerator>::NoteType>,
+    harmonics: GenericArray<usize, N>,
+    p: PhantomData<N2>
 }
 
-impl<T: WaveGenerator> HarmonicGen<T> {
-    /// slow path
+impl<T: WaveGenerator, N: ArrayLength<usize>, N2: ArrayLength<<T as WaveGenerator>::NoteType> + Clone>
+HarmonicGen<T, N, N2>
+{
     fn harmonic_new(srate: f32, harmonics: &[usize]) -> Self {
-        let mut note_storage = Vec::new();
-        for i in 0..harmonics.len() {
-            note_storage.push(<T as WaveGenerator>::NoteType::new(0.0, 0.0));
-        }
-
         Self {
             gen: T::new(srate),
-            harmonics: harmonics.to_vec(),
-            note_storage
+            harmonics: GenericArray::<usize, N>::clone_from_slice(harmonics),
+            p: PhantomData
         }
     }
 }
 
-impl<T: WaveGenerator> WaveGenerator for HarmonicGen<T> {
+impl<T: WaveGenerator, N: ArrayLength<usize>, N2: ArrayLength<<T as WaveGenerator>::NoteType> + Clone>
+WaveGenerator for HarmonicGen<T, N, N2>
+{
     type NoteType = HarmonicNote<
-            <T as WaveGenerator>::NoteType>;
+            <T as WaveGenerator>::NoteType,
+            N2>;
 
     fn new(srate: f32) -> Self {
         Self::harmonic_new(srate, &[1])
     }
 
     fn new_note(&mut self, frequency: f32, velocity: f32) -> Self::NoteType {
-        Self::NoteType::harmonic_new(frequency, velocity, &self.harmonics, &mut self.note_storage)
+        Self::NoteType::harmonic_new(frequency, velocity, &self.harmonics)
     }
 
     fn generate(&mut self, note: &mut Self::NoteType) -> f32 {
@@ -276,19 +292,24 @@ impl<T: WaveGenerator> WaveGenerator for HarmonicGen<T> {
 }
 
 #[derive(Clone)]
-struct HarmonicNote<T> {
-    notes: *mut Vec<T>,
+struct HarmonicNote<T: Note, N: ArrayLength<T>> {
+    notes: GenericArray<T, N>
 }
 
-impl<T: Note> HarmonicNote<T> {
-    fn harmonic_new(frequency: f32, velocity: f32, harmonics: &[usize], notes: &mut Vec<T>) -> Self {
+impl<T: Note, N: ArrayLength<T>> Default for HarmonicNote<T, N> {
+    fn default() -> Self {
+        panic!("no")
+    }
+}
+
+impl<T: Note, N: ArrayLength<T>> HarmonicNote<T, N> {
+    fn harmonic_new(frequency: f32, velocity: f32, harmonics: &[usize]) -> Self {
+        let mut notes = GenericArray::<T, N>::default();
+
         let mut i = 0;
-        unsafe {
-            for harmonic in harmonics {
-                (*notes)[i]  = T::new(frequency * (*harmonic as f32), velocity);
-                println!("freq: {}", notes[i].frequency());
-                i += 1;
-            }
+        for harmonic in harmonics {
+            notes[i] = T::new(frequency * (*harmonic as f32), velocity);
+            i += 1;
         }
 
         Self { notes }
@@ -307,7 +328,7 @@ impl<T: Note> HarmonicNote<T> {
     }
 }
 
-impl<T: Note> Note for HarmonicNote<T> {
+impl<T: Note, N: ArrayLength<T> + Clone> Note for HarmonicNote<T, N> {
     fn new(frequency: f32, velocity: f32) -> Self {
         panic!("should not be called")
     }
@@ -510,7 +531,7 @@ impl jack::MetadataHandler for MDHandler {
 }
 
 fn main() {
-    let gen = HarmonicGen::<SineWaveGenerator>::harmonic_new(44100.0, &[1, 2]);
+    let gen = HarmonicGen::<SineWaveGenerator, U3, U3>::harmonic_new(44100.0, &[1, 2, 3]);
     //let gen = SineWaveGenerator::new(44100.0);
     //let gen = WaveFusion::<SineWaveGenerator, SquareWaveGenerator>::new(44100.0);
 
