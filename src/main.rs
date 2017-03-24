@@ -4,7 +4,11 @@ extern crate rimd;
 use std::thread;
 use std::time::Duration;
 use std::f32;
+use std::slice::Iter;
 use std::slice::IterMut;
+//use std::marker::PhantomData;
+use std::cell::{RefMut, RefCell};
+use std::process;
 
 trait Note: Clone {
     fn new(frequency: f32, velocity: f32) -> Self;
@@ -217,6 +221,134 @@ impl<N1: Note, N2: Note> Note for WaveFusionNote<N1, N2> {
     }
 }
 
+struct HarmonicGen<T: WaveGenerator> {
+    gen: T,
+    harmonics: Vec<usize>,
+    // slow path allocates storage for all of the notes
+    note_storage: Vec<<T as WaveGenerator>::NoteType>,
+}
+
+impl<T: WaveGenerator> HarmonicGen<T> {
+    /// slow path
+    fn harmonic_new(srate: f32, harmonics: &[usize]) -> Self {
+        let mut note_storage = Vec::new();
+        for i in 0..harmonics.len() {
+            note_storage.push(<T as WaveGenerator>::NoteType::new(0.0, 0.0));
+        }
+
+        Self {
+            gen: T::new(srate),
+            harmonics: harmonics.to_vec(),
+            note_storage
+        }
+    }
+}
+
+impl<T: WaveGenerator> WaveGenerator for HarmonicGen<T> {
+    type NoteType = HarmonicNote<
+            <T as WaveGenerator>::NoteType>;
+
+    fn new(srate: f32) -> Self {
+        Self::harmonic_new(srate, &[1])
+    }
+
+    fn new_note(&mut self, frequency: f32, velocity: f32) -> Self::NoteType {
+        Self::NoteType::harmonic_new(frequency, velocity, &self.harmonics, &mut self.note_storage)
+    }
+
+    fn generate(&mut self, note: &mut Self::NoteType) -> f32 {
+        let mut v = 0.0;
+        let constant = 1.0 / (self.harmonics.len() as f32);
+        for note in note.notes_mut() {
+            v += constant * self.gen.generate(note);
+        }
+        v
+    }
+
+    fn is_note_dead(&self, note: &Self::NoteType) -> bool {
+        // TODO use some fancy functional thing
+        let mut ret = false;
+        for note in note.notes() {
+            ret &= self.gen.is_note_dead(note);
+        }
+        ret
+    }
+}
+
+#[derive(Clone)]
+struct HarmonicNote<T> {
+    notes: *mut Vec<T>,
+}
+
+impl<T: Note> HarmonicNote<T> {
+    fn harmonic_new(frequency: f32, velocity: f32, harmonics: &[usize], notes: &mut Vec<T>) -> Self {
+        let mut i = 0;
+        unsafe {
+            for harmonic in harmonics {
+                (*notes)[i]  = T::new(frequency * (*harmonic as f32), velocity);
+                println!("freq: {}", notes[i].frequency());
+                i += 1;
+            }
+        }
+
+        Self { notes }
+    }
+
+    fn notes(&self) -> Iter<T> {
+        unsafe {
+            (*self.notes).iter()
+        }
+    }
+
+    fn notes_mut(&mut self) -> IterMut<T> {
+        unsafe {
+            (*self.notes).iter_mut()
+        }
+    }
+}
+
+impl<T: Note> Note for HarmonicNote<T> {
+    fn new(frequency: f32, velocity: f32) -> Self {
+        panic!("should not be called")
+    }
+
+    fn note_on(&self) -> bool {
+        unsafe {
+            (*self.notes)[0].note_on()
+        }
+    }
+
+    fn set_note_on(&mut self) {
+        unsafe {
+            for note in (*self.notes).iter_mut() {
+                note.set_note_on();
+            }
+        }
+    }
+
+    fn set_note_off(&mut self) {
+        unsafe {
+            for note in (*self.notes).iter_mut() {
+                note.set_note_off();
+            }
+        }
+    }
+
+    fn set_phase_offset(&mut self, offset: usize) {
+        unsafe {
+            for note in (*self.notes).iter_mut() {
+                note.set_phase_offset(offset);
+            }
+        }
+    }
+
+    fn frequency(&self) -> f32 {
+        unsafe {
+            (*self.notes)[0].frequency()
+        }
+    }
+}
+
 struct EventManager<T: Note> {
     events: Vec<Option<T>>
 }
@@ -243,7 +375,6 @@ impl<T: Note> EventManager<T> {
     pub fn note_on(&mut self, note: T) {
         match self.next_free_idx() {
             Some(idx) => {
-                println!("picked {} for {}", idx, note.frequency());
                 self.events[idx] = Some(note)
             },
             None => ()
@@ -360,15 +491,37 @@ impl<Gen: WaveGenerator> jack::ProcessHandler for AudioHandler<Gen> {
     }
 }
 
+struct MDHandler { }
+
+impl MDHandler {
+    fn new() -> Self { Self {} }
+}
+
+impl jack::MetadataHandler for MDHandler {
+    fn on_xrun(&mut self) -> i32 {
+        println!("terminating due to xrun");
+        std::process::exit(-1);
+        unreachable!();
+    }
+
+    fn callbacks_of_interest(&self) -> Vec<jack::MetadataHandlers> {
+        vec![jack::MetadataHandlers::Xrun]
+    }
+}
+
 fn main() {
-    let gen = WaveFusion::<SineWaveGenerator, SquareWaveGenerator>::phased_new(44100.0, 2048);
+    let gen = HarmonicGen::<SineWaveGenerator>::harmonic_new(44100.0, &[1, 2]);
+    //let gen = SineWaveGenerator::new(44100.0);
+    //let gen = WaveFusion::<SineWaveGenerator, SquareWaveGenerator>::new(44100.0);
 
     let mut c = jack::Client::open("sine", jack::options::NO_START_SERVER).unwrap().0;
     let i = c.register_input_midi_port("midi_in").unwrap();
     let o = c.register_output_audio_port("audio_out").unwrap();
 
     let handler = AudioHandler::new(i, o, gen);
+    let mdhandler = MDHandler::new();
 
+    c.set_metadata_handler(mdhandler).unwrap();
     c.set_process_handler(handler).unwrap();
 
     c.activate().unwrap();
