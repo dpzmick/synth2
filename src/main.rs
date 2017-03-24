@@ -239,6 +239,7 @@ impl<N1: Note, N2: Note> Note for WaveFusionNote<N1, N2> {
     }
 }
 
+// this isn't fast enough, doing too much math
 struct HarmonicGen<T: WaveGenerator, N: ArrayLength<usize>, N2: ArrayLength<<T as WaveGenerator>::NoteType>> {
     gen: T,
     harmonics: GenericArray<usize, N>,
