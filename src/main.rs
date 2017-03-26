@@ -102,7 +102,6 @@ impl<'a> SoundGenerator<'a> {
 
     /// A MIDI note on event occurred
     pub fn note_on(&mut self, frequency: f32, velocity: f32) {
-        println!("note on");
         let note = Note {
             frequency,
             velocity,
@@ -116,7 +115,6 @@ impl<'a> SoundGenerator<'a> {
 
     /// A MIDI note off event occurred
     pub fn note_off(&mut self, frequency: f32) {
-        println!("note off");
         // TODO document that only one note may be "on" for each frequency
         // TODO envelope
         for optnote in self.notes.iter_mut() {
@@ -143,7 +141,7 @@ impl<'a> SoundGenerator<'a> {
                 Some(ref mut note) => {
                     let subframe = self.osc.generate(note.phase);
                     frame += self.osc.generate(note.phase);
-                    note.phase += 2.0 * (note.frequency / SRATE);
+                    note.phase += (note.frequency / SRATE);
 
                     while note.phase > 1.0 {
                         note.phase -= 1.0;
@@ -154,7 +152,8 @@ impl<'a> SoundGenerator<'a> {
             }
         }
 
-        frame.max(0.0).min(1.0)
+        //frame.max(-1.0).min(1.0)
+        frame
     }
 }
 
@@ -163,7 +162,7 @@ struct SineOscilator { }
 impl SignalGenerator for SineOscilator {
     fn generate(&self, t: f32) -> f32 {
         assert!(t >= 0.0 && t <= 1.0);
-        (t * f32::consts::PI).sin()
+        (2.0 * t * f32::consts::PI).sin()
     }
 }
 
@@ -294,7 +293,17 @@ impl jack::MetadataHandler for MDHandler {
     }
 }
 
+fn dump_samples() {
+    let mut gen = SoundGenerator::new(sine_singleton());
+    gen.note_on(440.0, 1.0);
+
+    for i in 0..256  {
+        println!("{}", gen.generate());
+    }
+}
+
 fn main() {
+    //dump_samples();
     let mut c = jack::Client::open("sine", jack::options::NO_START_SERVER).unwrap().0;
     let i = c.register_input_midi_port("midi_in").unwrap();
     let o = c.register_output_audio_port("audio_out").unwrap();
