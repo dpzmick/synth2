@@ -1,423 +1,200 @@
 extern crate easyjack as jack;
-extern crate rimd;
 #[macro_use]
 extern crate generic_array;
+#[macro_use]
+extern crate enum_primitive;
+extern crate time;
 
 use std::thread;
 use std::time::Duration;
 use std::f32;
+use std::f64;
 use std::slice::Iter;
 use std::slice::IterMut;
 use std::marker::PhantomData;
 use std::cell::{RefMut, RefCell};
 use std::process;
+use std::mem;
 
 use generic_array::ArrayLength;
 use generic_array::GenericArray;
-use generic_array::typenum::{U2, U3};
+use generic_array::typenum::{U2, U3, U4096};
+use enum_primitive::FromPrimitive;
 
-trait Note: Clone + Default {
-    fn new(frequency: f32, velocity: f32) -> Self;
+static SRATE: f32 = 44100.0;
 
-    fn note_on(&self) -> bool;
-    fn set_note_on(&mut self);
-    fn set_note_off(&mut self);
-
-    fn frequency(&self) -> f32;
-
-    fn set_phase_offset(&mut self, phase_offest: usize);
+struct MidiMessage<'a> {
+    pub data: &'a [u8]
 }
 
-trait WaveGenerator {
-    type NoteType: Note;
+enum_from_primitive! {
+#[derive(Debug,PartialEq,Clone,Copy)]
+pub enum MidiStatus {
+    // voice
+    NoteOff = 0x80,
+    NoteOn = 0x90,
+    PolyphonicAftertouch = 0xA0,
+    ControlChange = 0xB0,
+    ProgramChange = 0xC0,
+    ChannelAftertouch = 0xD0,
+    PitchBend = 0xE0,
 
-    fn new(srate: f32) -> Self;
+    // sysex
+    SysExStart = 0xF0,
+    MIDITimeCodeQtrFrame = 0xF1,
+    SongPositionPointer = 0xF2,
+    SongSelect = 0xF3,
+    TuneRequest = 0xF6, // F4 anf 5 are reserved and unused
+    SysExEnd = 0xF7,
+    TimingClock = 0xF8,
+    Start = 0xFA,
+    Continue = 0xFB,
+    Stop = 0xFC,
+    ActiveSensing = 0xFE, // FD also res/unused
+    SystemReset = 0xFF,
+}
+}
 
-    fn new_note(&mut self, frequency: f32, velocity: f32) -> Self::NoteType {
-        Self::NoteType::new(frequency, velocity)
+impl<'a> MidiMessage<'a> {
+    pub fn status(&self) -> MidiStatus {
+        MidiStatus::from_u8(self.data[0]).unwrap()
     }
-
-    fn generate(&mut self, note: &mut Self::NoteType) -> f32;
-    fn is_note_dead(&self, note: &Self::NoteType) -> bool;
 }
 
+/// Signal generators generate a predefined signal
+trait SignalGenerator {
+    /// Get the value of the signal at time t, where t: [0,1]
+    /// Moving from [0, 1] one time should represent one full cycle of the signal
+    fn generate(&self, t: f32) -> f32;
+}
+
+// POD for a sound generator note
 #[derive(Copy, Clone)]
-struct SineNote {
+struct Note {
+    velocity: f32,
     frequency: f32,
-    velocity: f32, /* 0 -> 1 */
-    phase: usize,
-    note_on: bool // note will decay when it is no longer on, when note off, velocity will decay
+    on: bool, // is the note currently being played on an instrument
+    phase: f32,
 }
 
-impl Default for SineNote {
-    fn default() -> Self {
-        Self::new(0.0, 0.0)
+struct SoundGenerator<'a> {
+    notes: [Option<Note>; 64],
+    osc: &'a SignalGenerator,
+}
+
+impl<'a> SoundGenerator<'a> {
+    fn next_free(&mut self) -> &mut Option<Note> {
+        for note in self.notes.iter_mut() {
+            if note.is_none() { return note; }
+        }
+
+        panic!("out of space");
     }
 }
 
-impl Note for SineNote {
-    fn new(frequency: f32, velocity: f32) -> Self {
-        SineNote {
+impl<'a> SoundGenerator<'a> {
+    fn new(osc: &'a SignalGenerator) -> Self {
+        Self {
+            notes: [None; 64],
+            osc
+        }
+    }
+
+    /// A MIDI note on event occurred
+    pub fn note_on(&mut self, frequency: f32, velocity: f32) {
+        println!("note on");
+        let note = Note {
             frequency,
             velocity,
-            phase: 0,
-            note_on: true,
-        }
+            on: true,
+            phase: 0.0
+        };
+
+        let free = self.next_free();
+        *free = Some(note)
     }
 
-    fn note_on(&self) -> bool { self.note_on }
-    fn set_note_on(&mut self) { self.note_on = true }
-    fn set_note_off(&mut self) { self.note_on = false }
-
-    fn frequency(&self) -> f32 { self.frequency }
-
-    // TODO check for wraparound?
-    fn set_phase_offset(&mut self, phase_offest: usize) { self.phase += phase_offest }
-}
-
-struct SineWaveGenerator {
-    srate_constant: f32,
-    decay_constant: f32,
-}
-
-impl WaveGenerator for SineWaveGenerator {
-    type NoteType = SineNote;
-
-    fn new(srate: f32) -> Self {
-        SineWaveGenerator {
-            srate_constant: srate,
-            decay_constant: 0.9999,
-        }
-    }
-
-    fn generate(&mut self, note: &mut SineNote) -> f32 {
-        let c = self.srate_constant / note.frequency;
-
-        if note.phase >= c as usize {
-            note.phase = 1;
-        } else {
-            note.phase += 1;
-        }
-
-        if !note.note_on() {
-            note.velocity = note.velocity * self.decay_constant;
-        }
-
-        let x = note.phase as f32;
-        note.velocity * (2.0 * std::f32::consts::PI * (note.frequency/self.srate_constant) * x).sin()
-    }
-
-    fn is_note_dead(&self, note: &SineNote) -> bool {
-        note.velocity < 0.01
-    }
-}
-
-struct SquareWaveGenerator {
-    sine_gen: SineWaveGenerator
-}
-
-impl WaveGenerator for SquareWaveGenerator {
-    type NoteType = SineNote;
-
-    fn new(srate: f32) -> Self {
-        Self {
-            sine_gen: SineWaveGenerator::new(srate)
-        }
-    }
-
-    fn generate(&mut self, note: &mut SineNote) -> f32 {
-        let s = self.sine_gen.generate(note);
-        if s > 0.0 {
-            return 1.0 * note.velocity;
-        } else {
-            return -1.0 * note.velocity;
-        }
-    }
-
-    fn is_note_dead(&self, note: &SineNote) -> bool {
-        self.sine_gen.is_note_dead(note)
-    }
-}
-
-// simpler types is perhaps a good argument for associated type?
-struct WaveFusion<Gen1: WaveGenerator, Gen2: WaveGenerator> {
-    gen1: Gen1,
-    gen2: Gen2,
-    phase_offest: usize,
-}
-
-impl<Gen1: WaveGenerator, Gen2: WaveGenerator> WaveFusion<Gen1, Gen2> {
-    fn phased_new(srate: f32, phase_offest: usize) -> Self {
-        Self {
-            gen1: Gen1::new(srate),
-            gen2: Gen2::new(srate),
-            phase_offest,
-        }
-    }
-}
-
-impl<Gen1: WaveGenerator, Gen2: WaveGenerator> WaveGenerator for WaveFusion<Gen1, Gen2> {
-    type NoteType = WaveFusionNote<
-        <Gen1 as WaveGenerator>::NoteType,
-        <Gen2 as WaveGenerator>::NoteType>;
-
-    fn new(srate: f32) -> Self {
-        Self::phased_new(srate, 0)
-    }
-
-    fn new_note(&mut self, frequency: f32, velocity: f32) -> Self::NoteType {
-        let n1 = <Gen1 as WaveGenerator>::NoteType::new(frequency, velocity);
-        let mut n2 = <Gen2 as WaveGenerator>::NoteType::new(frequency, velocity);
-
-        n2.set_phase_offset(self.phase_offest);
-
-        Self::NoteType::phased_new(n1, n2)
-    }
-
-    fn generate(&mut self, note: &mut Self::NoteType) -> f32 {
-        let g1 = self.gen1.generate(&mut note.n1);
-        let g2 = self.gen2.generate(&mut note.n2);
-
-        (0.9 * g1) + (0.1 * g2)
-    }
-
-    fn is_note_dead(&self, note: &Self::NoteType) -> bool {
-        self.gen1.is_note_dead(&note.n1) && self.gen2.is_note_dead(&note.n2)
-    }
-}
-
-#[derive(Copy, Clone)]
-struct WaveFusionNote<N1: Note, N2: Note> {
-    n1: N1,
-    n2: N2,
-}
-
-impl<N1: Note, N2: Note> Default for WaveFusionNote<N1, N2> {
-    fn default() -> Self {
-        Self::new(0.0, 0.0)
-    }
-}
-
-impl <N1: Note, N2: Note> WaveFusionNote<N1, N2> {
-    fn phased_new(n1: N1, n2: N2) -> Self {
-        Self { n1, n2 }
-    }
-}
-
-impl<N1: Note, N2: Note> Note for WaveFusionNote<N1, N2> {
-    fn new(frequency: f32, velocity: f32) -> Self {
-        Self {
-            n1: N1::new(frequency, velocity),
-            n2: N2::new(frequency, velocity),
-        }
-    }
-
-    fn note_on(&self) -> bool {
-        // both notes will be kept in sync, if one is on, so is the other
-        self.n1.note_on()
-    }
-
-    fn set_note_on(&mut self) {
-        self.n1.set_note_on();
-        self.n2.set_note_on();
-    }
-
-    fn set_note_off(&mut self) {
-        self.n1.set_note_off();
-        self.n2.set_note_off();
-    }
-
-    fn frequency(&self) -> f32 {
-        // both notes constructed with the same frequency, they shouldn't be changing their
-        // frequencies, but this might not be a valid assertion to make
-        self.n1.frequency()
-    }
-
-    fn set_phase_offset(&mut self, phase_offest: usize) {
-        self.n1.set_phase_offset(phase_offest);
-        self.n2.set_phase_offset(phase_offest);
-    }
-}
-
-// this isn't fast enough, doing too much math
-struct HarmonicGen<T: WaveGenerator, N: ArrayLength<usize>, N2: ArrayLength<<T as WaveGenerator>::NoteType>> {
-    gen: T,
-    harmonics: GenericArray<usize, N>,
-    p: PhantomData<N2>
-}
-
-impl<T: WaveGenerator, N: ArrayLength<usize>, N2: ArrayLength<<T as WaveGenerator>::NoteType> + Clone>
-HarmonicGen<T, N, N2>
-{
-    fn harmonic_new(srate: f32, harmonics: &[usize]) -> Self {
-        Self {
-            gen: T::new(srate),
-            harmonics: GenericArray::<usize, N>::clone_from_slice(harmonics),
-            p: PhantomData
-        }
-    }
-}
-
-impl<T: WaveGenerator, N: ArrayLength<usize>, N2: ArrayLength<<T as WaveGenerator>::NoteType> + Clone>
-WaveGenerator for HarmonicGen<T, N, N2>
-{
-    type NoteType = HarmonicNote<
-            <T as WaveGenerator>::NoteType,
-            N2>;
-
-    fn new(srate: f32) -> Self {
-        Self::harmonic_new(srate, &[1])
-    }
-
-    fn new_note(&mut self, frequency: f32, velocity: f32) -> Self::NoteType {
-        Self::NoteType::harmonic_new(frequency, velocity, &self.harmonics)
-    }
-
-    fn generate(&mut self, note: &mut Self::NoteType) -> f32 {
-        let mut v = 0.0;
-        let constant = 1.0 / (self.harmonics.len() as f32);
-        for note in note.notes_mut() {
-            v += constant * self.gen.generate(note);
-        }
-        v
-    }
-
-    fn is_note_dead(&self, note: &Self::NoteType) -> bool {
-        // TODO use some fancy functional thing
-        let mut ret = false;
-        for note in note.notes() {
-            ret &= self.gen.is_note_dead(note);
-        }
-        ret
-    }
-}
-
-#[derive(Clone)]
-struct HarmonicNote<T: Note, N: ArrayLength<T>> {
-    notes: GenericArray<T, N>
-}
-
-impl<T: Note, N: ArrayLength<T>> Default for HarmonicNote<T, N> {
-    fn default() -> Self {
-        panic!("no")
-    }
-}
-
-impl<T: Note, N: ArrayLength<T>> HarmonicNote<T, N> {
-    fn harmonic_new(frequency: f32, velocity: f32, harmonics: &[usize]) -> Self {
-        let mut notes = GenericArray::<T, N>::default();
-
-        let mut i = 0;
-        for harmonic in harmonics {
-            notes[i] = T::new(frequency * (*harmonic as f32), velocity);
-            i += 1;
-        }
-
-        Self { notes }
-    }
-
-    fn notes(&self) -> Iter<T> {
-        unsafe {
-            (*self.notes).iter()
-        }
-    }
-
-    fn notes_mut(&mut self) -> IterMut<T> {
-        unsafe {
-            (*self.notes).iter_mut()
-        }
-    }
-}
-
-impl<T: Note, N: ArrayLength<T> + Clone> Note for HarmonicNote<T, N> {
-    fn new(frequency: f32, velocity: f32) -> Self {
-        panic!("should not be called")
-    }
-
-    fn note_on(&self) -> bool {
-        unsafe {
-            (*self.notes)[0].note_on()
-        }
-    }
-
-    fn set_note_on(&mut self) {
-        unsafe {
-            for note in (*self.notes).iter_mut() {
-                note.set_note_on();
-            }
-        }
-    }
-
-    fn set_note_off(&mut self) {
-        unsafe {
-            for note in (*self.notes).iter_mut() {
-                note.set_note_off();
-            }
-        }
-    }
-
-    fn set_phase_offset(&mut self, offset: usize) {
-        unsafe {
-            for note in (*self.notes).iter_mut() {
-                note.set_phase_offset(offset);
-            }
-        }
-    }
-
-    fn frequency(&self) -> f32 {
-        unsafe {
-            (*self.notes)[0].frequency()
-        }
-    }
-}
-
-struct EventManager<T: Note> {
-    events: Vec<Option<T>>
-}
-
-impl<T: Note> EventManager<T> {
-    pub fn new(events: usize) -> Self {
-        let events = vec![None; events];
-        EventManager {
-            events
-        }
-    }
-
-    /// Find the next available location for a note
-    fn next_free_idx(&self) -> Option<usize> {
-        for i in 0..self.events.len() {
-            if self.events[i].is_none() {
-                return Some(i)
-            }
-        }
-
-        return None
-    }
-
-    pub fn note_on(&mut self, note: T) {
-        match self.next_free_idx() {
-            Some(idx) => {
-                self.events[idx] = Some(note)
-            },
-            None => ()
-        }
-    }
-
+    /// A MIDI note off event occurred
     pub fn note_off(&mut self, frequency: f32) {
-        for note in self.events.iter_mut() {
+        println!("note off");
+        // TODO document that only one note may be "on" for each frequency
+        // TODO envelope
+        for optnote in self.notes.iter_mut() {
+            if optnote.is_none() { continue; }
+
+            let note = optnote.unwrap();
+            if note.on && note.frequency == frequency {
+                *optnote = None;
+                return;
+            }
+        }
+
+        panic!("note not found");
+    }
+
+    //pub fn set_oscillator(&mut self, osc: &SignalGenerator) { }
+    //pub fn set_envelope(&mut self, env: &SignalGenerator) { }
+
+    /// Generates the next sample
+    pub fn generate(&mut self) -> f32 {
+        let mut frame = 0.0;
+        for note in self.notes.iter_mut() {
             match note.as_mut() {
                 Some(ref mut note) => {
-                    if note.frequency() == frequency && note.note_on() {
-                        note.set_note_off();
+                    let subframe = self.osc.generate(note.phase);
+                    frame += self.osc.generate(note.phase);
+                    note.phase += 2.0 * (note.frequency / SRATE);
+
+                    while note.phase > 1.0 {
+                        note.phase -= 1.0;
                     }
                 },
+
                 None => ()
             }
         }
+
+        frame.max(0.0).min(1.0)
+    }
+}
+
+struct SineOscilator { }
+
+impl SignalGenerator for SineOscilator {
+    fn generate(&self, t: f32) -> f32 {
+        assert!(t >= 0.0 && t <= 1.0);
+        (t * f32::consts::PI).sin()
+    }
+}
+
+fn sine_singleton() -> &'static SineOscilator {
+    static SINGLETON: SineOscilator = SineOscilator { };
+    &SINGLETON
+}
+
+/// Manages all of the things we currently have running and the connections between them
+struct Soundscape<'a> {
+    // TODO graph
+    root: SoundGenerator<'a>,
+}
+
+impl<'a> Soundscape<'a> {
+    fn new() -> Self {
+        Self {
+            root: SoundGenerator::new(sine_singleton())
+        }
     }
 
-    pub fn iter_mut(&mut self) -> IterMut<Option<T>> {
-        self.events.iter_mut()
+    fn note_on(&mut self, freq: f32, vel: f32) {
+        self.root.note_on(freq, vel);
+    }
+
+    fn note_off(&mut self, freq: f32) {
+        self.root.note_off(freq);
+    }
+
+    fn generate(&mut self) -> f32 {
+        self.root.generate()
     }
 }
 
@@ -434,81 +211,68 @@ fn midi_velocity_to_velocity(vel: u8) -> f32 {
     vel as f32 / (std::u8::MAX as f32)
 }
 
-struct AudioHandler<Gen: WaveGenerator> {
+struct AudioHandler<'a> {
     input: IPort,
     output: OPort,
-    generator: Gen,
-    ev: EventManager< <Gen as WaveGenerator>::NoteType >,
+    soundscape: Soundscape<'a>
 }
 
-impl<Gen: WaveGenerator> AudioHandler<Gen> {
-    pub fn new(input: IPort, output: OPort, generator: Gen) -> Self {
+impl<'a> AudioHandler<'a> {
+    pub fn new(input: IPort, output: OPort) -> Self {
         Self {
             input,
             output,
-            generator,
-            ev: EventManager::new(64)
+            soundscape: Soundscape::new()
         }
     }
 
 }
 
-impl<Gen: WaveGenerator> jack::ProcessHandler for AudioHandler<Gen> {
+impl<'a> jack::ProcessHandler for AudioHandler<'a> {
     fn process(&mut self, ctx: &jack::CallbackContext, nframes: jack::NumFrames) -> i32 {
+        let start = time::precise_time_ns();
         let output_buffer = self.output.get_write_buffer(nframes, &ctx);
         let input_buffer  = self.input.get_read_buffer(nframes, &ctx);
+        let end = time::precise_time_ns();
+        //println!("buffer setup: {}", end - start);
 
-        let mut event_index = 0;
+        let mut current_event = unsafe { mem::uninitialized() };
+        let mut current_event_index = 0;
         let event_count = input_buffer.len();
 
+        let start2 = time::precise_time_ns();
         for i in 0..(nframes as usize) {
-            if event_index < event_count {
-                while event_index < event_count
-                    && input_buffer.get(event_index).get_jack_time() == (i as u32)
-                {
-                    let event = input_buffer.get(event_index);
-                    let buf = event.raw_midi_bytes();
+            while current_event_index < event_count {
+                current_event = input_buffer.get(current_event_index);
+                if current_event.get_jack_time() as usize != i { break; }
+                current_event_index += 1;
 
-                    let m = rimd::MidiMessage { data: buf.to_vec() };
-                    match m.status() {
-                        rimd::Status::NoteOff => {
-                            let f = midi_note_to_frequency(m.data[1]);
-                            self.ev.note_off(f);
-                        },
+                let buf = current_event.raw_midi_bytes();
+                let m = MidiMessage { data: buf };
+                match m.status() {
+                    MidiStatus::NoteOff => {
+                        let f = midi_note_to_frequency(m.data[1]);
+                        self.soundscape.note_off(f);
+                    },
 
-                        rimd::Status::NoteOn => {
-                            let f = midi_note_to_frequency(m.data[1]);
-                            let v = midi_velocity_to_velocity(m.data[2]);
-                            let note = self.generator.new_note(f, v);
-                            self.ev.note_on(note);
-                        },
+                    MidiStatus::NoteOn => {
+                        let f = midi_note_to_frequency(m.data[1]);
+                        let v = midi_velocity_to_velocity(m.data[2]);
+                        self.soundscape.note_on(f, v);
+                    },
 
-                        _ => ()
-                    }
-
-                    event_index += 1;
+                    _ => ()
                 }
 
             }
 
-            let mut frame = 0.0;
-            for el in self.ev.iter_mut() {
-                if el.is_some() {
-                    let dead = {
-                        let note = el.as_mut().unwrap();
-                        frame += self.generator.generate(note).min(1.0);
-                        self.generator.is_note_dead(note)
-                    };
-
-                    if dead {
-                        *el = None
-                    }
-                }
-            }
-
-            output_buffer[i] = frame.min(0.9).max(-0.9);
+            output_buffer[i] = self.soundscape.generate();
         }
 
+        let end = time::precise_time_ns();
+        //println!("frames filling: {}", end - start2);
+        let end = time::precise_time_ns();
+        //println!("elapsed: {}", end - start);
         0
     }
 }
@@ -522,8 +286,7 @@ impl MDHandler {
 impl jack::MetadataHandler for MDHandler {
     fn on_xrun(&mut self) -> i32 {
         println!("terminating due to xrun");
-        std::process::exit(-1);
-        unreachable!();
+        1
     }
 
     fn callbacks_of_interest(&self) -> Vec<jack::MetadataHandlers> {
@@ -532,15 +295,11 @@ impl jack::MetadataHandler for MDHandler {
 }
 
 fn main() {
-    let gen = HarmonicGen::<SineWaveGenerator, U3, U3>::harmonic_new(44100.0, &[1, 2, 3]);
-    //let gen = SineWaveGenerator::new(44100.0);
-    //let gen = WaveFusion::<SineWaveGenerator, SquareWaveGenerator>::new(44100.0);
-
     let mut c = jack::Client::open("sine", jack::options::NO_START_SERVER).unwrap().0;
     let i = c.register_input_midi_port("midi_in").unwrap();
     let o = c.register_output_audio_port("audio_out").unwrap();
 
-    let handler = AudioHandler::new(i, o, gen);
+    let handler = AudioHandler::new(i, o);
     let mdhandler = MDHandler::new();
 
     c.set_metadata_handler(mdhandler).unwrap();
