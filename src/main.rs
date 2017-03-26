@@ -135,12 +135,14 @@ impl<'a> SoundGenerator<'a> {
 
     /// Generates the next sample
     pub fn generate(&mut self) -> f32 {
+        let mut num_notes = 0;
         let mut frame = 0.0;
         for note in self.notes.iter_mut() {
             match note.as_mut() {
                 Some(ref mut note) => {
                     let subframe = self.osc.generate(note.phase);
                     frame += self.osc.generate(note.phase);
+                    num_notes += 1;
                     note.phase += (note.frequency / SRATE);
 
                     while note.phase > 1.0 {
@@ -152,8 +154,13 @@ impl<'a> SoundGenerator<'a> {
             }
         }
 
-        //frame.max(-1.0).min(1.0)
-        frame
+        // return 0 if we had no notes, don't multiply by num notes because apparently that can
+        // create floating point issues
+        if num_notes == 0 {
+            0.0
+        } else {
+            frame * (1.0 / num_notes as f32)
+        }
     }
 }
 
@@ -174,26 +181,30 @@ fn sine_singleton() -> &'static SineOscilator {
 /// Manages all of the things we currently have running and the connections between them
 struct Soundscape<'a> {
     // TODO graph
-    root: SoundGenerator<'a>,
+    root1: SoundGenerator<'a>,
+    root2: SoundGenerator<'a>,
 }
 
 impl<'a> Soundscape<'a> {
     fn new() -> Self {
         Self {
-            root: SoundGenerator::new(sine_singleton())
+            root1: SoundGenerator::new(sine_singleton()),
+            root2: SoundGenerator::new(sine_singleton()),
         }
     }
 
     fn note_on(&mut self, freq: f32, vel: f32) {
-        self.root.note_on(freq, vel);
+        self.root1.note_on(freq, vel);
+        self.root2.note_on(freq * 2.0, vel);
     }
 
     fn note_off(&mut self, freq: f32) {
-        self.root.note_off(freq);
+        self.root1.note_off(freq);
+        self.root2.note_off(freq * 2.0);
     }
 
     fn generate(&mut self) -> f32 {
-        self.root.generate()
+        0.8 * self.root1.generate() + 0.2 * self.root2.generate()
     }
 }
 
@@ -285,7 +296,7 @@ impl MDHandler {
 impl jack::MetadataHandler for MDHandler {
     fn on_xrun(&mut self) -> i32 {
         println!("terminating due to xrun");
-        1
+        process::abort();
     }
 
     fn callbacks_of_interest(&self) -> Vec<jack::MetadataHandlers> {
@@ -294,16 +305,16 @@ impl jack::MetadataHandler for MDHandler {
 }
 
 fn dump_samples() {
-    let mut gen = SoundGenerator::new(sine_singleton());
+    let mut gen = Soundscape::new();
     gen.note_on(440.0, 1.0);
 
-    for i in 0..256  {
+    for i in 0..1024  {
         println!("{}", gen.generate());
     }
 }
 
 fn main() {
-    //dump_samples();
+    // dump_samples();
     let mut c = jack::Client::open("sine", jack::options::NO_START_SERVER).unwrap().0;
     let i = c.register_input_midi_port("midi_in").unwrap();
     let o = c.register_output_audio_port("audio_out").unwrap();
