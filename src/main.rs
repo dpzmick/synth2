@@ -55,6 +55,14 @@ pub enum MidiStatus {
 }
 }
 
+// types of wires
+// - control
+// - signal
+// - ??? voltage?
+
+// connect components with wires
+// send voltages?
+
 impl<'a> MidiMessage<'a> {
     pub fn status(&self) -> MidiStatus {
         MidiStatus::from_u8(self.data[0]).unwrap()
