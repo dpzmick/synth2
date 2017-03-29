@@ -55,291 +55,175 @@ pub enum MidiStatus {
 }
 }
 
-// types of wires
-// - control
-// - signal
-// - ??? voltage?
-
-// connect components with wires
-// send voltages?
-
 impl<'a> MidiMessage<'a> {
     pub fn status(&self) -> MidiStatus {
         MidiStatus::from_u8(self.data[0]).unwrap()
     }
 }
 
-/// Signal generators generate a predefined signal
-trait SignalGenerator {
-    /// Get the value of the signal at time t, where t: [0,1]
-    /// Moving from [0, 1] one time should represent one full cycle of the signal
-    fn generate(&self, t: f32) -> f32;
+// do the values decay?
+struct Wire {
+    current_value: f32
 }
 
-// POD for a sound generator note
-#[derive(Copy, Clone)]
-struct Note {
-    velocity: f32,
-    frequency: f32,
-    on: bool, // is the note currently being played on an instrument
+impl Wire {
+    fn new() -> Self {
+        Self { current_value: 0.0 }
+    }
+
+    fn read(&self) -> f32 { self.current_value }
+    fn write(&mut self, val: f32) { self.current_value = val; }
+}
+
+// What happens if a wire is destroyed?
+type WireId = usize;
+
+struct WireManager {
+    wires: Vec<Wire>
+}
+
+impl WireManager {
+    /// Only safe in slow path
+    fn new() -> Self {
+        Self { wires: Vec::new() }
+    }
+
+    fn register_wire(&mut self) -> WireId {
+        let wire = Wire::new();
+        self.wires.push(wire);
+        self.wires.len() - 1
+    }
+
+    fn borrow_wire(&self, id: WireId) -> &Wire {
+        &self.wires[id as usize]
+    }
+
+    fn borrow_wire_mut(&mut self, id: WireId) -> &mut Wire {
+        &mut self.wires[id as usize]
+    }
+}
+
+trait Component {
+    fn set_incoming(&mut self, inpt: WireId);
+    fn set_outgoing(&mut self, inpt: WireId);
+    fn generate(&mut self, wires: &mut WireManager);
+}
+
+struct SineWaveOscilator {
+    incoming: Option<WireId>,
+    outgoing: Option<WireId>,
     phase: f32,
 }
 
-struct SoundGenerator<'a> {
-    notes: [Option<Note>; 64],
-    osc: &'a SignalGenerator,
-}
-
-impl<'a> SoundGenerator<'a> {
-    fn next_free(&mut self) -> &mut Option<Note> {
-        for note in self.notes.iter_mut() {
-            if note.is_none() { return note; }
-        }
-
-        panic!("out of space");
-    }
-}
-
-impl<'a> SoundGenerator<'a> {
-    fn new(osc: &'a SignalGenerator) -> Self {
+impl SineWaveOscilator {
+    fn new() -> Self {
         Self {
-            notes: [None; 64],
-            osc
+            incoming: None,
+            outgoing: None,
+            phase: 0.0,
         }
     }
 
-    /// A MIDI note on event occurred
-    pub fn note_on(&mut self, frequency: f32, velocity: f32) {
-        let note = Note {
-            frequency,
-            velocity,
-            on: true,
-            phase: 0.0
-        };
-
-        let free = self.next_free();
-        *free = Some(note)
-    }
-
-    /// A MIDI note off event occurred
-    pub fn note_off(&mut self, frequency: f32) {
-        // TODO document that only one note may be "on" for each frequency
-        // TODO envelope
-        for optnote in self.notes.iter_mut() {
-            if optnote.is_none() { continue; }
-
-            let note = optnote.unwrap();
-            if note.on && note.frequency == frequency {
-                *optnote = None;
-                return;
-            }
-        }
-
-        panic!("note not found");
-    }
-
-    //pub fn set_oscillator(&mut self, osc: &SignalGenerator) { }
-    //pub fn set_envelope(&mut self, env: &SignalGenerator) { }
-
-    /// Generates the next sample
-    pub fn generate(&mut self) -> f32 {
-        let mut num_notes = 0;
-        let mut frame = 0.0;
-        for note in self.notes.iter_mut() {
-            match note.as_mut() {
-                Some(ref mut note) => {
-                    let subframe = self.osc.generate(note.phase);
-                    frame += self.osc.generate(note.phase);
-                    num_notes += 1;
-                    note.phase += (note.frequency / SRATE);
-
-                    while note.phase > 1.0 {
-                        note.phase -= 1.0;
-                    }
-                },
-
-                None => ()
-            }
-        }
-
-        // return 0 if we had no notes, don't multiply by num notes because apparently that can
-        // create floating point issues
-        if num_notes == 0 {
-            0.0
-        } else {
-            frame * (1.0 / num_notes as f32)
-        }
-    }
-}
-
-struct SineOscilator { }
-
-impl SignalGenerator for SineOscilator {
-    fn generate(&self, t: f32) -> f32 {
+    fn sine(&self, t: f32) -> f32 {
         assert!(t >= 0.0 && t <= 1.0);
         (2.0 * t * f32::consts::PI).sin()
     }
 }
 
-fn sine_singleton() -> &'static SineOscilator {
-    static SINGLETON: SineOscilator = SineOscilator { };
-    &SINGLETON
+impl Component for SineWaveOscilator {
+    fn set_incoming(&mut self, inpt: WireId) {
+        self.incoming = Some(inpt)
+    }
+
+    fn set_outgoing(&mut self, out: WireId) {
+        self.outgoing = Some(out)
+    }
+
+    fn generate(&mut self, wires: &mut WireManager) {
+        if self.incoming.is_none() || self.outgoing.is_none() { return; }
+
+        let incoming = self.incoming.unwrap();
+
+        // TODO do something about the input and output ranges
+        let freq = wires.borrow_wire(incoming).read();
+        self.phase += (freq / SRATE);
+
+        while self.phase > 1.0 {
+            self.phase -= 1.0;
+        }
+
+        let outgoing = self.outgoing.unwrap();
+        wires.borrow_wire_mut(outgoing).write(self.sine(self.phase));
+    }
 }
 
-/// Manages all of the things we currently have running and the connections between them
-struct Soundscape<'a> {
-    // TODO graph
-    root1: SoundGenerator<'a>,
-    root2: SoundGenerator<'a>,
+struct Soundscape {
+    components: Vec<Box<Component>>,
+    wires: WireManager,
+    // we have a few default wires to contend with
+    // these are populated and read from by the audio library
+    midi_frequency_in: WireId,
+    midi_gate_in:      WireId,
+    samples_out:       WireId,
 }
 
-impl<'a> Soundscape<'a> {
+// eventually will be polyphonic
+impl Soundscape {
     fn new() -> Self {
+        let mut wires = WireManager::new();
+        let midi_frequency_in = wires.register_wire();
+        let midi_gate_in      = wires.register_wire();
+        let samples_out       = wires.register_wire();
+
         Self {
-            root1: SoundGenerator::new(sine_singleton()),
-            root2: SoundGenerator::new(sine_singleton()),
+            components: Vec::new(),
+            wires, midi_frequency_in, midi_gate_in, samples_out
         }
     }
 
     fn note_on(&mut self, freq: f32, vel: f32) {
-        self.root1.note_on(freq, vel);
-        self.root2.note_on(freq * 2.0, vel);
+        // TODO velocity?
+        self.wires.borrow_wire_mut(self.midi_frequency_in).write(freq);
+        self.wires.borrow_wire_mut(self.midi_gate_in).write(1.0);
     }
 
     fn note_off(&mut self, freq: f32) {
-        self.root1.note_off(freq);
-        self.root2.note_off(freq * 2.0);
+        self.wires.borrow_wire_mut(self.midi_gate_in).write(0.0);
     }
 
+    fn add_component<T: Component + 'static>(&mut self, comp: T) {
+        // TODO fix this up, do a sort
+        self.components.push(Box::new(comp));
+    }
+
+    /// no idea what this interface needs to look like so I'm just gonna wing it
+    fn do_connecting(&mut self) {
+        self.components[0].set_incoming(self.midi_frequency_in);
+        self.components[0].set_outgoing(self.samples_out);
+    }
+
+    /// Generate a single sample
     fn generate(&mut self) -> f32 {
-        0.8 * self.root1.generate() + 0.2 * self.root2.generate()
-    }
-}
-
-type OPort = jack::OutputPortHandle<jack::DefaultAudioSample>;
-type IPort = jack::InputPortHandle<jack::MidiEvent>;
-
-fn midi_note_to_frequency(note: u8) -> f32 {
-    let a = 440.0;
-    // this is a magic formula from the internet
-    (a / 32.0) * (2.0_f32.powf( (note as f32 - 9.0) / 12.0 ))
-}
-
-fn midi_velocity_to_velocity(vel: u8) -> f32 {
-    vel as f32 / (std::u8::MAX as f32)
-}
-
-struct AudioHandler<'a> {
-    input: IPort,
-    output: OPort,
-    soundscape: Soundscape<'a>
-}
-
-impl<'a> AudioHandler<'a> {
-    pub fn new(input: IPort, output: OPort) -> Self {
-        Self {
-            input,
-            output,
-            soundscape: Soundscape::new()
-        }
-    }
-
-}
-
-impl<'a> jack::ProcessHandler for AudioHandler<'a> {
-    fn process(&mut self, ctx: &jack::CallbackContext, nframes: jack::NumFrames) -> i32 {
-        let start = time::precise_time_ns();
-        let output_buffer = self.output.get_write_buffer(nframes, &ctx);
-        let input_buffer  = self.input.get_read_buffer(nframes, &ctx);
-        let end = time::precise_time_ns();
-        //println!("buffer setup: {}", end - start);
-
-        let mut current_event = unsafe { mem::uninitialized() };
-        let mut current_event_index = 0;
-        let event_count = input_buffer.len();
-
-        let start2 = time::precise_time_ns();
-        for i in 0..(nframes as usize) {
-            while current_event_index < event_count {
-                current_event = input_buffer.get(current_event_index);
-                if current_event.get_jack_time() as usize != i { break; }
-                current_event_index += 1;
-
-                let buf = current_event.raw_midi_bytes();
-                let m = MidiMessage { data: buf };
-                match m.status() {
-                    MidiStatus::NoteOff => {
-                        let f = midi_note_to_frequency(m.data[1]);
-                        self.soundscape.note_off(f);
-                    },
-
-                    MidiStatus::NoteOn => {
-                        let f = midi_note_to_frequency(m.data[1]);
-                        let v = midi_velocity_to_velocity(m.data[2]);
-                        self.soundscape.note_on(f, v);
-                    },
-
-                    _ => ()
-                }
-
-            }
-
-            output_buffer[i] = self.soundscape.generate();
+        // TODO topo sort the components as they get added
+        // update the world, in order
+        for component in self.components.iter_mut() {
+            component.generate(&mut self.wires);
         }
 
-        let end = time::precise_time_ns();
-        //println!("frames filling: {}", end - start2);
-        let end = time::precise_time_ns();
-        //println!("elapsed: {}", end - start);
-        0
-    }
-}
-
-struct MDHandler { }
-
-impl MDHandler {
-    fn new() -> Self { Self {} }
-}
-
-impl jack::MetadataHandler for MDHandler {
-    fn on_xrun(&mut self) -> i32 {
-        println!("terminating due to xrun");
-        process::abort();
-    }
-
-    fn callbacks_of_interest(&self) -> Vec<jack::MetadataHandlers> {
-        vec![jack::MetadataHandlers::Xrun]
-    }
-}
-
-fn dump_samples() {
-    let mut gen = Soundscape::new();
-    gen.note_on(440.0, 1.0);
-
-    for i in 0..1024  {
-        println!("{}", gen.generate());
+        // get the value on the output wire
+        self.wires.borrow_wire(self.samples_out).read()
     }
 }
 
 fn main() {
-    // dump_samples();
-    let mut c = jack::Client::open("sine", jack::options::NO_START_SERVER).unwrap().0;
-    let i = c.register_input_midi_port("midi_in").unwrap();
-    let o = c.register_output_audio_port("audio_out").unwrap();
+    let mut sounds = Soundscape::new();
+    sounds.add_component(SineWaveOscilator::new());
+    sounds.do_connecting();
 
-    let handler = AudioHandler::new(i, o);
-    let mdhandler = MDHandler::new();
+    // fire up a note
+    sounds.note_on(440.0, 1.0);
 
-    c.set_metadata_handler(mdhandler).unwrap();
-    c.set_process_handler(handler).unwrap();
-
-    c.activate().unwrap();
-    c.connect_ports("sine:audio_out", "system:playback_1").unwrap();
-    //c.connect_ports("jack-keyboard:midi_out", "sine:midi_in").unwrap();
-
-    loop {
-        thread::sleep(Duration::from_millis(100000));
+    for i in 0..256 {
+        println!("{}", sounds.generate());
     }
-
-    c.close().unwrap();
 }
