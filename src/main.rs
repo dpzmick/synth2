@@ -61,66 +61,51 @@ impl<'a> MidiMessage<'a> {
     }
 }
 
-// do the values decay?
-struct Wire {
-    current_value: f32
+type PortId = usize;
+
+struct PortManager {
+    ports: Vec<f32>
 }
 
-impl Wire {
+impl PortManager {
     fn new() -> Self {
-        Self { current_value: 0.0 }
+        Self {
+            ports: Vec::new()
+        }
     }
 
-    fn read(&self) -> f32 { self.current_value }
-    fn write(&mut self, val: f32) { self.current_value = val; }
-}
-
-// What happens if a wire is destroyed?
-type WireId = usize;
-
-struct WireManager {
-    wires: Vec<Wire>
-}
-
-impl WireManager {
-    /// Only safe in slow path
-    fn new() -> Self {
-        Self { wires: Vec::new() }
+    pub fn register_port(&mut self) -> PortId {
+        self.ports.push(0.0);
+        self.ports.len() - 1
     }
 
-    fn register_wire(&mut self) -> WireId {
-        let wire = Wire::new();
-        self.wires.push(wire);
-        self.wires.len() - 1
+    pub fn get_port_val(&mut self, p: PortId) -> Option<f32> {
+        Some(self.ports[p])
     }
 
-    fn borrow_wire(&self, id: WireId) -> &Wire {
-        &self.wires[id as usize]
-    }
-
-    fn borrow_wire_mut(&mut self, id: WireId) -> &mut Wire {
-        &mut self.wires[id as usize]
+    pub fn set_port_value(&mut self, p: PortId, val: f32) {
+        // assert cannot allocate or resize
+        self.ports[p] = val;
     }
 }
 
 trait Component {
-    fn set_incoming(&mut self, inpt: WireId);
-    fn set_outgoing(&mut self, inpt: WireId);
-    fn generate(&mut self, wires: &mut WireManager);
+    fn hack_connect(&mut self, comp_port: PortId, other_port: PortId);
+    fn generate(&mut self, ports: &mut PortManager);
 }
 
 struct SineWaveOscilator {
-    incoming: Option<WireId>,
-    outgoing: Option<WireId>,
     phase: f32,
+    frequency_port: Option<PortId>,
+    output_port: Option<PortId>,
 }
 
 impl SineWaveOscilator {
     fn new() -> Self {
         Self {
-            incoming: None,
-            outgoing: None,
             phase: 0.0,
+            frequency_port: None,
+            output_port: None,
         }
     }
 
@@ -131,75 +116,71 @@ impl SineWaveOscilator {
 }
 
 impl Component for SineWaveOscilator {
-    fn set_incoming(&mut self, inpt: WireId) {
-        self.incoming = Some(inpt)
+    fn hack_connect(&mut self, f: PortId, o: PortId) {
+        self.frequency_port = Some(f);
+        self.output_port = Some(o);
     }
 
-    fn set_outgoing(&mut self, out: WireId) {
-        self.outgoing = Some(out)
-    }
+    fn generate(&mut self, ports: &mut PortManager) {
+        if self.frequency_port.is_none() || self.output_port.is_none() { return; }
 
-    fn generate(&mut self, wires: &mut WireManager) {
-        if self.incoming.is_none() || self.outgoing.is_none() { return; }
-
-        let incoming = self.incoming.unwrap();
-
-        // TODO do something about the input and output ranges
-        let freq = wires.borrow_wire(incoming).read();
+        let freq = ports.get_port_val(self.frequency_port.unwrap()).unwrap();
         self.phase += (freq / SRATE);
 
         while self.phase > 1.0 {
             self.phase -= 1.0;
         }
 
-        let outgoing = self.outgoing.unwrap();
-        wires.borrow_wire_mut(outgoing).write(self.sine(self.phase));
+        let v = self.sine(self.phase);
+        ports.set_port_value(self.output_port.unwrap(), v);
     }
 }
 
 struct Soundscape {
     components: Vec<Box<Component>>,
-    wires: WireManager,
+    edges: Vec<(usize, usize)>,
+    ports: PortManager,
     // we have a few default wires to contend with
     // these are populated and read from by the audio library
-    midi_frequency_in: WireId,
-    midi_gate_in:      WireId,
-    samples_out:       WireId,
+    midi_frequency_in: PortId,
+    midi_gate_in:      PortId,
+    samples_out:       PortId,
 }
 
 // eventually will be polyphonic
 impl Soundscape {
     fn new() -> Self {
-        let mut wires = WireManager::new();
-        let midi_frequency_in = wires.register_wire();
-        let midi_gate_in      = wires.register_wire();
-        let samples_out       = wires.register_wire();
+        let mut ports = PortManager::new();
+        let midi_frequency_in = ports.register_port();
+        let samples_out       = ports.register_port();
+        let midi_gate_in      = ports.register_port();
 
         Self {
             components: Vec::new(),
-            wires, midi_frequency_in, midi_gate_in, samples_out
+            edges:      Vec::new(),
+            ports:      ports,
+            midi_frequency_in,
+            midi_gate_in,
+            samples_out
         }
     }
 
     fn note_on(&mut self, freq: f32, vel: f32) {
         // TODO velocity?
-        self.wires.borrow_wire_mut(self.midi_frequency_in).write(freq);
-        self.wires.borrow_wire_mut(self.midi_gate_in).write(1.0);
+        self.ports.set_port_value(self.midi_frequency_in, freq);
+        self.ports.set_port_value(self.midi_gate_in, 1.0);
     }
 
     fn note_off(&mut self, freq: f32) {
-        self.wires.borrow_wire_mut(self.midi_gate_in).write(0.0);
+        self.ports.set_port_value(self.midi_gate_in, 0.0);
     }
 
     fn add_component<T: Component + 'static>(&mut self, comp: T) {
         // TODO fix this up, do a sort
         self.components.push(Box::new(comp));
-    }
-
-    /// no idea what this interface needs to look like so I'm just gonna wing it
-    fn do_connecting(&mut self) {
-        self.components[0].set_incoming(self.midi_frequency_in);
-        self.components[0].set_outgoing(self.samples_out);
+        let s = self.components.len();
+        let ref mut comp = self.components[s - 1];
+        comp.hack_connect(self.midi_frequency_in, self.samples_out);
     }
 
     /// Generate a single sample
@@ -207,18 +188,17 @@ impl Soundscape {
         // TODO topo sort the components as they get added
         // update the world, in order
         for component in self.components.iter_mut() {
-            component.generate(&mut self.wires);
+            component.generate(&mut self.ports);
         }
 
         // get the value on the output wire
-        self.wires.borrow_wire(self.samples_out).read()
+        self.ports.get_port_val(self.samples_out).unwrap()
     }
 }
 
 fn main() {
     let mut sounds = Soundscape::new();
     sounds.add_component(SineWaveOscilator::new());
-    sounds.do_connecting();
 
     // fire up a note
     sounds.note_on(440.0, 1.0);
