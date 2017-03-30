@@ -1,76 +1,45 @@
 extern crate easyjack as jack;
 #[macro_use]
-extern crate generic_array;
-#[macro_use]
-extern crate enum_primitive;
 extern crate time;
 
-use std::thread;
-use std::time::Duration;
+use std::cell::{RefMut, RefCell};
 use std::f32;
 use std::f64;
+use std::marker::PhantomData;
+use std::mem;
+use std::process;
 use std::slice::Iter;
 use std::slice::IterMut;
-use std::marker::PhantomData;
-use std::cell::{RefMut, RefCell};
-use std::process;
-use std::mem;
-
-use generic_array::ArrayLength;
-use generic_array::GenericArray;
-use generic_array::typenum::{U2, U3, U4096};
-use enum_primitive::FromPrimitive;
+use std::thread;
+use std::time::Duration;
 
 static SRATE: f32 = 44100.0;
 
-struct MidiMessage<'a> {
-    pub data: &'a [u8]
-}
-
-enum_from_primitive! {
-#[derive(Debug,PartialEq,Clone,Copy)]
-pub enum MidiStatus {
-    // voice
-    NoteOff = 0x80,
-    NoteOn = 0x90,
-    PolyphonicAftertouch = 0xA0,
-    ControlChange = 0xB0,
-    ProgramChange = 0xC0,
-    ChannelAftertouch = 0xD0,
-    PitchBend = 0xE0,
-
-    // sysex
-    SysExStart = 0xF0,
-    MIDITimeCodeQtrFrame = 0xF1,
-    SongPositionPointer = 0xF2,
-    SongSelect = 0xF3,
-    TuneRequest = 0xF6, // F4 anf 5 are reserved and unused
-    SysExEnd = 0xF7,
-    TimingClock = 0xF8,
-    Start = 0xFA,
-    Continue = 0xFB,
-    Stop = 0xFC,
-    ActiveSensing = 0xFE, // FD also res/unused
-    SystemReset = 0xFF,
-}
-}
-
-impl<'a> MidiMessage<'a> {
-    pub fn status(&self) -> MidiStatus {
-        MidiStatus::from_u8(self.data[0]).unwrap()
-    }
-}
-
 type PortId = usize;
 
+#[derive(PartialEq, Eq)]
+enum PortDirection {
+    In,
+    Out,
+}
+
+struct PortInfo {
+    pub comp: &'static str,
+    pub port: &'static str,
+    pub dir: PortDirection,
+    pub id: PortId,
+}
+
 struct PortManager {
-    ports: Vec<f32>
+    ports: Vec<f32>,
+    connections: Vec<(usize, usize)>,
 }
 
 impl PortManager {
     fn new() -> Self {
         Self {
-            ports: Vec::new()
+            ports: Vec::new(),
+            connections: Vec::new(),
         }
     }
 
@@ -86,16 +55,34 @@ impl PortManager {
     pub fn set_port_value(&mut self, p: PortId, val: f32) {
         // assert cannot allocate or resize
         self.ports[p] = val;
+
+        for &(p1, p2) in self.connections.iter() {
+            if p1 == p {
+                self.ports[p2] = val;
+            }
+        }
+        println!("set value on port {} to {}", p, val);
+    }
+
+    pub fn connect_ports(&mut self, p1: PortId, p2: PortId) {
+        // we can do better
+        self.connections.push( (p1, p2) );
+        self.connections.push( (p2, p1) );
+        println!("connected {} and {}", p1, p2);
     }
 }
 
 trait Component {
-    fn hack_connect(&mut self, comp_port: PortId, other_port: PortId);
     fn generate(&mut self, ports: &mut PortManager);
+
+    // slow path
+    fn initialize_ports(&mut self, ports: &mut PortManager);
+    fn get_ports(&self) -> &[PortInfo];
 }
 
 struct SineWaveOscilator {
     phase: f32,
+    my_ports: Vec<PortInfo>,
     frequency_port: Option<PortId>,
     output_port: Option<PortId>,
 }
@@ -104,6 +91,7 @@ impl SineWaveOscilator {
     fn new() -> Self {
         Self {
             phase: 0.0,
+            my_ports: Vec::new(),
             frequency_port: None,
             output_port: None,
         }
@@ -116,9 +104,32 @@ impl SineWaveOscilator {
 }
 
 impl Component for SineWaveOscilator {
-    fn hack_connect(&mut self, f: PortId, o: PortId) {
-        self.frequency_port = Some(f);
-        self.output_port = Some(o);
+    fn initialize_ports(&mut self, ports: &mut PortManager) {
+        let i = PortInfo {
+            comp: "Sine",
+            port: "frequency_in",
+            dir: PortDirection::In,
+            id: ports.register_port(),
+        };
+
+        println!("output; {}", i.id);
+        self.frequency_port = Some(i.id);
+        self.my_ports.push(i);
+
+        let o = PortInfo {
+            comp: "Sine",
+            port: "samples_out",
+            dir: PortDirection::Out,
+            id: ports.register_port(),
+        };
+
+        println!("output; {}", o.id);
+        self.output_port = Some(o.id);
+        self.my_ports.push(o);
+    }
+
+    fn get_ports(&self) -> &[PortInfo] {
+        self.my_ports.as_slice()
     }
 
     fn generate(&mut self, ports: &mut PortManager) {
@@ -140,7 +151,7 @@ struct Soundscape {
     components: Vec<Box<Component>>,
     edges: Vec<(usize, usize)>,
     ports: PortManager,
-    // we have a few default wires to contend with
+    // we have a few default ports to contend with
     // these are populated and read from by the audio library
     midi_frequency_in: PortId,
     midi_gate_in:      PortId,
@@ -180,7 +191,7 @@ impl Soundscape {
         self.components.push(Box::new(comp));
         let s = self.components.len();
         let ref mut comp = self.components[s - 1];
-        comp.hack_connect(self.midi_frequency_in, self.samples_out);
+        comp.initialize_ports(&mut self.ports);
     }
 
     /// Generate a single sample
@@ -194,11 +205,25 @@ impl Soundscape {
         // get the value on the output wire
         self.ports.get_port_val(self.samples_out).unwrap()
     }
+
+    fn example_connections(&mut self) {
+        for port in self.components[0].get_ports() {
+            if port.dir == PortDirection::In {
+                self.ports.connect_ports(port.id, self.midi_frequency_in);
+            }
+
+            if port.dir == PortDirection::Out {
+                self.ports.connect_ports(port.id, self.samples_out);
+            }
+        }
+
+    }
 }
 
 fn main() {
     let mut sounds = Soundscape::new();
     sounds.add_component(SineWaveOscilator::new());
+    sounds.example_connections();
 
     // fire up a note
     sounds.note_on(440.0, 1.0);
