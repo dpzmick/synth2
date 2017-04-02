@@ -1,2 +1,1 @@
-- different number representation?
-    - all values are bt 0 and 1, need a type to represent this?
+- Create a fixed size vector type which isn't a nightmare to use
