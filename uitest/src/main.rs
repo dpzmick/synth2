@@ -5,8 +5,6 @@ use conrod::backend::glium::glium;
 use conrod::backend::glium::glium::{DisplayBuild, Surface};
 use conrod::event::Drag;
 
-widget_ids!(struct Ids { text });
-
 fn main() {
     const WIDTH: u32 = 400;
     const HEIGHT: u32 = 200;
@@ -20,8 +18,6 @@ fn main() {
 
     let mut ui = conrod::UiBuilder::new([WIDTH as f64, HEIGHT as f64]).build();
 
-    let ids = Ids::new(ui.widget_id_generator());
-
     const FONT_PATH: &'static str = "/usr/share/fonts/TTF/Inconsolata-Regular.ttf";
     ui.fonts.insert_from_file(FONT_PATH).unwrap();
 
@@ -31,7 +27,13 @@ fn main() {
     let mut last_update = std::time::Instant::now();
     let mut ui_needs_update = true;
 
-    let mut st = ShittyState { pos: [0.0, 0.0] };
+    let mut st = ShittyState {
+        pos1: [0.0, 0.0],
+        id1: ui.widget_id_generator().next(),
+        pos2: [0.0, -20.0],
+        id2: ui.widget_id_generator().next(),
+        id3: ui.widget_id_generator().next(),
+    };
 
     'main: loop {
         let sixteen_ms = std::time::Duration::from_millis(16);
@@ -69,7 +71,7 @@ fn main() {
             }
         }
 
-        set_ui(ui.set_widgets(), &ids, &mut st);
+        set_ui(ui.set_widgets(), &mut st);
 
         // Render the `Ui` and then display it on the screen.
         if let Some(primitives) = ui.draw_if_changed() {
@@ -154,7 +156,6 @@ impl Widget for DragRect {
         for ev in ui.widget_input(id).events() {
             match ev {
                 event::Widget::Drag(ev) if ev.button == input::MouseButton::Left => {
-                    println!("ev: {:?}", ev);
                     last_loc = Some(ev)
                 },
                 _ => ()
@@ -166,19 +167,38 @@ impl Widget for DragRect {
 }
 
 struct ShittyState {
-    pub pos: conrod::Point,
+    pub pos1: conrod::Point,
+    pub id1: conrod::widget::Id,
+
+    pub pos2: conrod::Point,
+    pub id2: conrod::widget::Id,
+
+    pub id3: conrod::widget::Id,
 }
 
-fn set_ui(ref mut ui: conrod::UiCell, ids: &Ids, st: &mut ShittyState) {
+fn set_ui(ref mut ui: conrod::UiCell, st: &mut ShittyState) {
     use conrod::Sizeable;
+    use conrod::widget::Line;
+    use conrod::widget::DropDownList;
 
     if let Some(loc) = DragRect::new()
-                    .xy(st.pos)
+                    .xy(st.pos1)
                     .wh([50.0, 50.0])
-                    .set(ids.text, ui)
+                    .set(st.id1, ui)
     {
-        println!("current: {:?} loc: {:?}", st.pos, loc.to);
-        st.pos[0] += loc.to[0];
-        st.pos[1] += loc.to[1];
+        st.pos1[0] += loc.to[0];
+        st.pos1[1] += loc.to[1];
     }
+
+    if let Some(loc) = DragRect::new()
+                    .xy(st.pos2)
+                    .wh([50.0, 50.0])
+                    .set(st.id2, ui)
+    {
+        st.pos2[0] += loc.to[0];
+        st.pos2[1] += loc.to[1];
+    }
+
+    Line::new(st.pos1, st.pos2)
+        .set(st.id3, ui);
 }
