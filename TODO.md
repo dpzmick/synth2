@@ -1,3 +1,0 @@
-- Create a fixed size vector type which isn't a nightmare to use
-- ui ports as well as audio ports
-- deal with changing sample rate/changing audio environment

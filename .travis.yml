@@ -1,0 +1,32 @@
+# please try to avoid putting long scripts in this file
+# put them in build_tools/ instead
+
+language: rust
+rust:
+  - nightly
+
+# required so that we can sudo install kcov
+# kcov could be run out of the source directory, but this makes things a touch
+# simpler
+# If travis updates their ubuntu image so that we no longer need to build kcov
+# from source, this can go away
+sudo: required
+
+addons:
+  # packages needed to build kcov and jack stuff
+  apt:
+    packages:
+      - libcurl4-openssl-dev
+      - libelf-dev
+      - libdw-dev
+      - cmake
+      - gcc
+      - binutils-dev
+      - jackd2
+      - libjack-jackd2-dev
+
+after_success: |
+  ./build_tools/install_kcov.sh && ./build_tools/coverage.sh &&
+  echo "Uploaded code coverage"
+
+# TODO consider adding rustfmt checks to the build script?
