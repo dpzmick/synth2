@@ -5,7 +5,7 @@ use std::marker::PhantomData;
 // This is quite a bit of complexity just to get a little a bit of extra type safety
 
 // TODO private?
-type PortId = usize;
+pub type PortId = usize;
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 enum PortDirection {

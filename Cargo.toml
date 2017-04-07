@@ -6,8 +6,7 @@ authors = ["David Zmick <dpzmick@gmail.com>"]
 [dependencies]
 easyjack = { path ="/home/dpzmick/programming/rust-easyjack" }
 enum_primitive = "0.1.1"
-generic-array = "0.7.1"
 time = "0.1"
 
-# [profile.release]
-# debug = true
+[profile.release]
+debug = true

@@ -1,270 +1,27 @@
 extern crate easyjack as jack;
 #[macro_use]
-extern crate time;
-#[macro_use]
 extern crate enum_primitive;
 
+mod components;
+mod midi;
 mod ports;
 
+use components::Component;
+use components::{CombineInputs, Math, OnOff, SineWaveOscillator, SquareWaveOscillator};
+use midi::{MidiMessage, MidiStatus};
 use ports::PortManager;
 use ports::{InputPortHandle, OutputPortHandle};
 
-use std::cell::{RefMut, RefCell};
-use std::f32;
-use std::f64;
-use std::marker::PhantomData;
 use std::mem;
-use std::process;
-use std::slice::Iter;
-use std::slice::IterMut;
 use std::thread;
 use std::time::Duration;
 
-use enum_primitive::FromPrimitive;
-
 static SRATE: f32 = 44100.0;
-
-type PortId = usize;
-
-trait Component<'a> {
-    fn generate(&mut self, ports: &mut PortManager);
-    fn initialize_ports(&mut self, ports: &mut PortManager<'a>);
-}
-
-struct SineWaveOscillator<'a> {
-    name: String,
-    phase: f32,
-    frequency_port: Option<InputPortHandle<'a>>,
-    output_port: Option<OutputPortHandle<'a>>,
-}
-
-impl<'a> SineWaveOscillator<'a> {
-    fn new(name: String) -> Self {
-        Self {
-            name,
-            phase: 0.0,
-            frequency_port: None,
-            output_port: None,
-        }
-    }
-
-    fn sine(&self, t: f32) -> f32 {
-        assert!(t >= 0.0 && t <= 1.0);
-        (2.0 * t * f32::consts::PI).sin()
-    }
-}
-
-impl<'a> Component<'a> for SineWaveOscillator<'a> {
-    fn initialize_ports(&mut self, ports: &mut PortManager<'a>) {
-        // TODO error handling?
-
-        self.frequency_port =
-            Some(ports.register_input_port(self.name.clone(), "frequency_in".to_string()).unwrap());
-
-        self.output_port =
-            Some(ports.register_output_port(self.name.clone(), "samples_out".to_string()).unwrap());
-    }
-
-    fn generate(&mut self, ports: &mut PortManager) {
-        if self.frequency_port.is_none() || self.output_port.is_none() { return; }
-
-        let freq = ports.get_port_value(&self.frequency_port.unwrap());
-        self.phase += (freq / SRATE);
-
-        while self.phase > 1.0 {
-            self.phase -= 1.0;
-        }
-
-        let v = self.sine(self.phase);
-        ports.set_port_value(&self.output_port.unwrap(), v);
-    }
-}
-
-struct SquareWaveOscillator<'a> {
-    name: String,
-    sine: SineWaveOscillator<'a>,
-}
-
-impl<'a> SquareWaveOscillator<'a> {
-    fn new(name: String) -> Self {
-        Self {
-            name: name.clone(),
-            sine: SineWaveOscillator::new(name),
-        }
-    }
-}
-
-impl<'a> Component<'a> for SquareWaveOscillator<'a> {
-    fn initialize_ports(&mut self, ports: &mut PortManager<'a>)  {
-        self.sine.initialize_ports(ports);
-    }
-
-    fn generate(&mut self, ports: &mut PortManager) {
-        // find the sine out port
-        let mut out = None;
-        match ports.find_ports(&self.name) {
-            Some(ports) => {
-                for port in ports {
-                    match port.promote_to_output() {
-                        Ok(port) => out = Some(port),
-                        Err(_)   => (),
-                    }
-                }
-            },
-            None => (),
-        };
-
-        // we can write to the output port, then overwrite the value
-        // nothing else can be generating while we are generating so there is no chance of this
-        // value leaking into some other component
-
-        match out {
-            Some(out) => {
-                self.sine.generate(ports);
-                let v = ports.get_port_value(&out);
-
-                if v < 0.0 {
-                    ports.set_port_value(&out, -1.0);
-                } else if v > 0.0 {
-                    ports.set_port_value(&out, 1.0);
-                }
-            },
-
-            None => ()
-        }
-
-    }
-}
-
-struct OnOff<'a> {
-    name:        String,
-    samples_in:  Option<InputPortHandle<'a>>,
-    gate_in:     Option<InputPortHandle<'a>>,
-    samples_out: Option<OutputPortHandle<'a>>,
-}
-
-impl<'a> OnOff<'a> {
-    fn new(name: String) -> Self {
-        Self {
-            name,
-            samples_in:  None,
-            gate_in:     None,
-            samples_out: None
-        }
-    }
-}
-
-impl<'a> Component<'a> for OnOff<'a> {
-    fn initialize_ports(&mut self, ports: &mut PortManager<'a>) {
-        self.samples_in =
-            Some(ports.register_input_port(self.name.clone(), "samples_in".to_string()).unwrap());
-
-        self.gate_in =
-            Some(ports.register_input_port(self.name.clone(), "gate_in".to_string()).unwrap());
-
-        self.samples_out =
-            Some(ports.register_output_port(self.name.clone(), "samples_out".to_string()).unwrap());
-    }
-
-    fn generate(&mut self, ports: &mut PortManager) {
-        if self.samples_in.is_none() || self.gate_in.is_none() || self.samples_out.is_none() { return; }
-
-        let samples = ports.get_port_value(&self.samples_in.unwrap());
-        let gate    = if ports.get_port_value(&self.gate_in.unwrap()) != 0.0 { 1.0 } else { 0.0 };
-
-        let out = samples * gate;
-        if ports.get_port_value(&self.samples_out.unwrap()) != out {
-            ports.set_port_value(&self.samples_out.unwrap(), out);
-        }
-    }
-}
-
-struct Math<'a> {
-    name: String,
-    math_function: Box<Fn(f32) -> f32>,
-    input:  Option<InputPortHandle<'a>>,
-    output: Option<OutputPortHandle<'a>>,
-}
-
-impl<'a> Math<'a> {
-    fn new<M: Fn(f32) -> f32 + 'static>(name: String, math: M) -> Self {
-        Self {
-            name,
-            math_function: Box::new(math),
-            input:  None,
-            output: None,
-        }
-    }
-
-    // fn parse_math(expr: String) -> Box<Fn(f32) -> f32> {
-    //     // TODO
-    // }
-}
-
-impl<'a> Component<'a> for Math<'a> {
-    fn initialize_ports(&mut self, ports: &mut PortManager<'a>) {
-        self.input = Some(ports.register_input_port(self.name.clone(), "input".to_string()).unwrap());
-        self.output = Some(ports.register_output_port(self.name.clone(), "output".to_string()).unwrap());
-    }
-
-    fn generate(&mut self, ports: &mut PortManager) {
-        let i = ports.get_port_value(&self.input.unwrap());
-        ports.set_port_value(&self.output.unwrap(), (self.math_function)(i))
-    }
-}
-
-// has many inputs and combines them proportionally to how many are emitting a signal
-struct CombineInputs<'a> {
-    name: String,
-    num_inputs: usize, // needed when initializing ports
-    inputs: Vec<InputPortHandle<'a>>,
-    output: Option<OutputPortHandle<'a>>,
-}
-
-impl<'a> CombineInputs<'a> {
-    fn new(name: String, num_inputs: usize) -> Self {
-        Self {
-            name,
-            num_inputs,
-            inputs: Vec::new(),
-            output: None
-        }
-    }
-}
-
-impl<'a> Component<'a> for CombineInputs<'a> {
-    fn initialize_ports(&mut self, ports: &mut PortManager<'a>) {
-        for i in 0..self.num_inputs {
-            let iname = format!("{}_input{}", self.name, i);
-            let i = ports.register_input_port(self.name.clone(), iname);
-            self.inputs.push(i.unwrap());
-        }
-
-        self.output = Some(ports.register_output_port(self.name.clone(), "out".to_string()).unwrap());
-    }
-
-    fn generate(&mut self, ports: &mut PortManager) {
-        let mut count: usize = 0;
-        let mut input_sum = 0.0;
-        for input in self.inputs.iter() {
-            let i = ports.get_port_value(input);
-            if i != 0.0 {
-                input_sum += i;
-                count     += 1;
-            }
-        }
-
-        if count > 0 {
-            let v = input_sum * (1.0 / count as f32);
-            ports.set_port_value(&self.output.unwrap(), v);
-        }
-    }
-}
 
 // One voice holds a complete representation of the graph
 struct Voice<'a> {
     components: Vec<Box<Component<'a> + 'a>>,
-    edges: Vec<(usize, usize)>,
+    //edges: Vec<(usize, usize)>,
     ports: PortManager<'a>,
     // we have a few default ports to contend with
     // these are populated and read from by the audio library
@@ -288,7 +45,7 @@ impl<'a> Voice<'a> {
 
         Self {
             components: Vec::new(),
-            edges:      Vec::new(),
+            //edges:      Vec::new(),
             ports:      ports,
             midi_frequency_in,
             midi_gate_in,
@@ -441,44 +198,6 @@ impl<'a> Soundscape<'a> {
     }
 }
 
-struct MidiMessage<'a> {
-    pub data: &'a [u8]
-}
-
-enum_from_primitive! {
-#[derive(Debug,PartialEq,Clone,Copy)]
-pub enum MidiStatus {
-    // voice
-    NoteOff = 0x80,
-    NoteOn = 0x90,
-    PolyphonicAftertouch = 0xA0,
-    ControlChange = 0xB0,
-    ProgramChange = 0xC0,
-    ChannelAftertouch = 0xD0,
-    PitchBend = 0xE0,
-
-    // sysex
-    SysExStart = 0xF0,
-    MIDITimeCodeQtrFrame = 0xF1,
-    SongPositionPointer = 0xF2,
-    SongSelect = 0xF3,
-    TuneRequest = 0xF6, // F4 anf 5 are reserved and unused
-    SysExEnd = 0xF7,
-    TimingClock = 0xF8,
-    Start = 0xFA,
-    Continue = 0xFB,
-    Stop = 0xFC,
-    ActiveSensing = 0xFE, // FD also res/unused
-    SystemReset = 0xFF,
-}
-}
-
-impl<'a> MidiMessage<'a> {
-    pub fn status(&self) -> MidiStatus {
-        MidiStatus::from_u8(self.data[0]).unwrap()
-    }
-}
-
 type OPort = jack::OutputPortHandle<jack::DefaultAudioSample>;
 type IPort = jack::InputPortHandle<jack::MidiEvent>;
 
@@ -514,17 +233,13 @@ impl<'a> AudioHandler<'a> {
 
 impl<'a> jack::ProcessHandler for AudioHandler<'a> {
     fn process(&mut self, ctx: &jack::CallbackContext, nframes: jack::NumFrames) -> i32 {
-        let start = time::precise_time_ns();
         let output_buffer = self.output.get_write_buffer(nframes, &ctx);
         let input_buffer  = self.input.get_read_buffer(nframes, &ctx);
-        let end = time::precise_time_ns();
-        //println!("buffer setup: {}", end - start);
 
         let mut current_event = unsafe { mem::uninitialized() };
         let mut current_event_index = 0;
         let event_count = input_buffer.len();
 
-        let start2 = time::precise_time_ns();
         for i in 0..(nframes as usize) {
             while current_event_index < event_count {
                 current_event = input_buffer.get(current_event_index);
@@ -553,25 +268,14 @@ impl<'a> jack::ProcessHandler for AudioHandler<'a> {
             output_buffer[i] = self.soundscape.generate();
         }
 
-        let end = time::precise_time_ns();
-        //println!("frames filling: {}", end - start2);
-        let end = time::precise_time_ns();
-        //println!("elapsed: {}", end - start);
         0
     }
 }
 
-fn dump_samples() {
-    let mut gen = Soundscape::new();
-    gen.note_on(440.0, 1.0);
-
-    for i in 0..1024  {
-        println!("{}", gen.generate());
-    }
-}
-
 fn main() {
-    // dump_samples();
+    // start an audio handler
+    // start a ui
+
     let mut c = jack::Client::open("sine", jack::options::NO_START_SERVER).unwrap().0;
     let i = c.register_input_midi_port("midi_in").unwrap();
     let o = c.register_output_audio_port("audio_out").unwrap();
