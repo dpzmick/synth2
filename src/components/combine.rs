@@ -1,5 +1,5 @@
 use components::Component;
-use ports::{PortManager, InputPortHandle, OutputPortHandle};
+use ports::{InputPortHandle, OutputPortHandle, PortManager};
 
 // has many inputs and combines them proportionally to how many are emitting a signal
 pub struct CombineInputs<'a> {
@@ -10,35 +10,40 @@ pub struct CombineInputs<'a> {
 }
 
 impl<'a> CombineInputs<'a> {
-    pub fn new(name: String, num_inputs: usize) -> Self {
+    pub fn new(name: String, num_inputs: usize) -> Self
+    {
         Self {
             name,
             num_inputs,
             inputs: Vec::new(),
-            output: None
+            output: None,
         }
     }
 }
 
 impl<'a> Component<'a> for CombineInputs<'a> {
-    fn initialize_ports(&mut self, ports: &mut PortManager<'a>) {
+    fn initialize_ports(&mut self, ports: &mut PortManager<'a>)
+    {
         for i in 0..self.num_inputs {
             let iname = format!("{}_input{}", self.name, i);
             let i = ports.register_input_port(self.name.clone(), iname);
             self.inputs.push(i.unwrap());
         }
 
-        self.output = Some(ports.register_output_port(self.name.clone(), "out".to_string()).unwrap());
+        self.output = Some(ports
+                               .register_output_port(self.name.clone(), "out".to_string())
+                               .unwrap());
     }
 
-    fn generate(&mut self, ports: &mut PortManager) {
+    fn generate(&mut self, ports: &mut PortManager)
+    {
         let mut count: usize = 0;
         let mut input_sum = 0.0;
         for input in self.inputs.iter() {
             let i = ports.get_port_value(input);
             if i != 0.0 {
                 input_sum += i;
-                count     += 1;
+                count += 1;
             }
         }
 
@@ -48,4 +53,3 @@ impl<'a> Component<'a> for CombineInputs<'a> {
         }
     }
 }
-

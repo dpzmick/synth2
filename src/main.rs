@@ -6,11 +6,11 @@ mod components;
 mod midi;
 mod ports;
 
-use components::Component;
 use components::{CombineInputs, Math, OnOff, SineWaveOscillator, SquareWaveOscillator};
+use components::Component;
 use midi::{MidiMessage, MidiStatus};
-use ports::PortManager;
 use ports::{InputPortHandle, OutputPortHandle};
+use ports::PortManager;
 
 use std::mem;
 use std::thread;
@@ -26,45 +26,52 @@ struct Voice<'a> {
     // we have a few default ports to contend with
     // these are populated and read from by the audio library
     midi_frequency_in: OutputPortHandle<'a>,
-    midi_gate_in:      OutputPortHandle<'a>,
-    samples_out:       InputPortHandle<'a>,
+    midi_gate_in: OutputPortHandle<'a>,
+    samples_out: InputPortHandle<'a>,
 }
 
 // eventually will be polyphonic
 impl<'a> Voice<'a> {
-    fn new() -> Self {
+    fn new() -> Self
+    {
         let mut ports = PortManager::new();
-        let midi_frequency_in =
-            ports.register_output_port("voice".to_string(), "midi_frequency_out".to_string()).unwrap();
+        let midi_frequency_in = ports
+            .register_output_port("voice".to_string(), "midi_frequency_out".to_string())
+            .unwrap();
 
-        let midi_gate_in =
-            ports.register_output_port("voice".to_string(), "midi_gate_out".to_string()).unwrap();
+        let midi_gate_in = ports
+            .register_output_port("voice".to_string(), "midi_gate_out".to_string())
+            .unwrap();
 
-        let samples_out =
-            ports.register_input_port("voice".to_string(), "samples_in".to_string()).unwrap();
+        let samples_out = ports
+            .register_input_port("voice".to_string(), "samples_in".to_string())
+            .unwrap();
 
         Self {
             components: Vec::new(),
             //edges:      Vec::new(),
-            ports:      ports,
+            ports: ports,
             midi_frequency_in,
             midi_gate_in,
-            samples_out
+            samples_out,
         }
     }
 
-    fn note_on(&mut self, freq: f32, vel: f32) {
+    fn note_on(&mut self, freq: f32, vel: f32)
+    {
         // TODO velocity?
         self.ports.set_port_value(&self.midi_frequency_in, freq);
         self.ports.set_port_value(&self.midi_gate_in, 1.0);
     }
 
     // TODO will frequency ever be used? Probably not
-    fn note_off(&mut self, freq: f32) {
+    fn note_off(&mut self, freq: f32)
+    {
         self.ports.set_port_value(&self.midi_gate_in, 0.0);
     }
 
-    fn current_frequency(&self) -> Option<f32> {
+    fn current_frequency(&self) -> Option<f32>
+    {
         if self.ports.get_port_value(&self.midi_gate_in) != 0.0 {
             Some(self.ports.get_port_value(&self.midi_frequency_in))
         } else {
@@ -72,7 +79,8 @@ impl<'a> Voice<'a> {
         }
     }
 
-    fn add_component<T: Component<'a> + 'a>(&mut self, comp: T) {
+    fn add_component<T: Component<'a> + 'a>(&mut self, comp: T)
+    {
         // TODO fix this up, do a sort
         self.components.push(Box::new(comp));
         let s = self.components.len();
@@ -81,7 +89,8 @@ impl<'a> Voice<'a> {
     }
 
     /// Generate a single sample
-    fn generate(&mut self) -> f32 {
+    fn generate(&mut self) -> f32
+    {
         // TODO topo sort the components as they get added
         // update the world, in order
         for component in self.components.iter_mut() {
@@ -92,10 +101,11 @@ impl<'a> Voice<'a> {
         self.ports.get_port_value(&self.samples_out)
     }
 
-    fn example_connections(&mut self) {
+    fn example_connections(&mut self)
+    {
         // creates two harmonics
         // midi input goes through here to get second harmonic
-        self.add_component(Math::new("math".to_string(), |x| x*2.0));
+        self.add_component(Math::new("math".to_string(), |x| x * 2.0));
         self.add_component(SquareWaveOscillator::new("harmonic_osc".to_string()));
 
         // midi input also sent through here
@@ -108,25 +118,23 @@ impl<'a> Voice<'a> {
         self.add_component(OnOff::new("envelope".to_string()));
 
         // connect things
-        let pairs = [
-            // push midi frequency the right places
-            ( ("voice", "midi_frequency_out"), ("base_osc", "frequency_in") ),
-            ( ("voice", "midi_frequency_out"), ("math", "input") ),
+        let pairs = [// push midi frequency the right places
+                     (("voice", "midi_frequency_out"), ("base_osc", "frequency_in")),
+                     (("voice", "midi_frequency_out"), ("math", "input")),
 
-            // finish up the connections for math
-            ( ("math", "output"), ("harmonic_osc", "frequency_in") ),
+                     // finish up the connections for math
+                     (("math", "output"), ("harmonic_osc", "frequency_in")),
 
-            // connect the oscillators to the combiner
-            ( ("base_osc", "samples_out"), ("combine", "combine_input0") ),
-            ( ("harmonic_osc", "samples_out"), ("combine", "combine_input1") ),
+                     // connect the oscillators to the combiner
+                     (("base_osc", "samples_out"), ("combine", "combine_input0")),
+                     (("harmonic_osc", "samples_out"), ("combine", "combine_input1")),
 
-            // set up the envelope
-            ( ("voice", "midi_gate_out"), ("envelope", "gate_in") ),
-            ( ("combine", "out"), ("envelope", "samples_in") ),
+                     // set up the envelope
+                     (("voice", "midi_gate_out"), ("envelope", "gate_in")),
+                     (("combine", "out"), ("envelope", "samples_in")),
 
-            // send audio back to the card
-            ( ("envelope", "samples_out"), ("voice", "samples_in") )
-        ];
+                     // send audio back to the card
+                     (("envelope", "samples_out"), ("voice", "samples_in"))];
 
         for &(p1, p2) in pairs.iter() {
             println!("connecting {:?} to {:?}", p1, p2);
@@ -145,7 +153,8 @@ struct Soundscape<'a> {
 }
 
 impl<'a> Soundscape<'a> {
-    fn new() -> Self {
+    fn new() -> Self
+    {
         let mut voices = Vec::new();
         for _ in 0..16 {
             voices.push(Voice::new());
@@ -154,27 +163,30 @@ impl<'a> Soundscape<'a> {
         Self { voices }
     }
 
-    fn example_connections(&mut self) {
+    fn example_connections(&mut self)
+    {
         for voice in self.voices.iter_mut() {
             voice.example_connections()
         }
     }
 
-    fn note_on(&mut self, freq: f32, vel: f32) {
+    fn note_on(&mut self, freq: f32, vel: f32)
+    {
         for voice in self.voices.iter_mut() {
             match voice.current_frequency() {
                 Some(_f) => (),
                 None => {
                     voice.note_on(freq, vel);
-                    return
-                }
+                    return;
+                },
             }
         }
 
         // TODO replacement policy
     }
 
-    fn note_off(&mut self, freq: f32) {
+    fn note_off(&mut self, freq: f32)
+    {
         for voice in self.voices.iter_mut() {
             match voice.current_frequency() {
                 Some(f) => {
@@ -182,12 +194,14 @@ impl<'a> Soundscape<'a> {
                         voice.note_off(f)
                     }
                 },
-                None => ()
+                None => (),
             }
         }
     }
 
-    fn generate(&mut self) -> f32 {
+    fn generate(&mut self) -> f32
+    {
+        let mut count = 0;
         let mut sample = 0.0;
         for voice in self.voices.iter_mut() {
             let subsample = voice.generate();
@@ -201,13 +215,15 @@ impl<'a> Soundscape<'a> {
 type OPort = jack::OutputPortHandle<jack::DefaultAudioSample>;
 type IPort = jack::InputPortHandle<jack::MidiEvent>;
 
-fn midi_note_to_frequency(note: u8) -> f32 {
+fn midi_note_to_frequency(note: u8) -> f32
+{
     let a = 440.0;
     // this is a magic formula from the internet
-    (a / 32.0) * (2.0_f32.powf( (note as f32 - 9.0) / 12.0 ))
+    (a / 32.0) * (2.0_f32.powf((note as f32 - 9.0) / 12.0))
 }
 
-fn midi_velocity_to_velocity(vel: u8) -> f32 {
+fn midi_velocity_to_velocity(vel: u8) -> f32
+{
     vel as f32 / (std::u8::MAX as f32)
 }
 
@@ -219,7 +235,8 @@ struct AudioHandler<'a> {
 
 
 impl<'a> AudioHandler<'a> {
-    pub fn new(input: IPort, output: OPort) -> Self {
+    pub fn new(input: IPort, output: OPort) -> Self
+    {
         let mut soundscape = Soundscape::new();
         soundscape.example_connections();
 
@@ -232,9 +249,10 @@ impl<'a> AudioHandler<'a> {
 }
 
 impl<'a> jack::ProcessHandler for AudioHandler<'a> {
-    fn process(&mut self, ctx: &jack::CallbackContext, nframes: jack::NumFrames) -> i32 {
+    fn process(&mut self, ctx: &jack::CallbackContext, nframes: jack::NumFrames) -> i32
+    {
         let output_buffer = self.output.get_write_buffer(nframes, &ctx);
-        let input_buffer  = self.input.get_read_buffer(nframes, &ctx);
+        let input_buffer = self.input.get_read_buffer(nframes, &ctx);
 
         let mut current_event = unsafe { mem::uninitialized() };
         let mut current_event_index = 0;
@@ -243,7 +261,9 @@ impl<'a> jack::ProcessHandler for AudioHandler<'a> {
         for i in 0..(nframes as usize) {
             while current_event_index < event_count {
                 current_event = input_buffer.get(current_event_index);
-                if current_event.get_jack_time() as usize != i { break; }
+                if current_event.get_jack_time() as usize != i {
+                    break;
+                }
                 current_event_index += 1;
 
                 let buf = current_event.raw_midi_bytes();
@@ -260,7 +280,7 @@ impl<'a> jack::ProcessHandler for AudioHandler<'a> {
                         self.soundscape.note_on(f, v);
                     },
 
-                    _ => ()
+                    _ => (),
                 }
 
             }
@@ -272,11 +292,14 @@ impl<'a> jack::ProcessHandler for AudioHandler<'a> {
     }
 }
 
-fn main() {
+fn main()
+{
     // start an audio handler
     // start a ui
 
-    let mut c = jack::Client::open("sine", jack::options::NO_START_SERVER).unwrap().0;
+    let mut c = jack::Client::open("sine", jack::options::NO_START_SERVER)
+        .unwrap()
+        .0;
     let i = c.register_input_midi_port("midi_in").unwrap();
     let o = c.register_output_audio_port("audio_out").unwrap();
 
@@ -285,7 +308,8 @@ fn main() {
     c.set_process_handler(handler).unwrap();
 
     c.activate().unwrap();
-    c.connect_ports("sine:audio_out", "system:playback_1").unwrap();
+    c.connect_ports("sine:audio_out", "system:playback_1")
+        .unwrap();
 
     loop {
         thread::sleep(Duration::from_millis(100000));

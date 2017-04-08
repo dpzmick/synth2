@@ -7,7 +7,8 @@ pub struct SquareWaveOscillator<'a> {
 }
 
 impl<'a> SquareWaveOscillator<'a> {
-    pub fn new(name: String) -> Self {
+    pub fn new(name: String) -> Self
+    {
         Self {
             name: name.clone(),
             sine: SineWaveOscillator::new(name),
@@ -16,11 +17,13 @@ impl<'a> SquareWaveOscillator<'a> {
 }
 
 impl<'a> Component<'a> for SquareWaveOscillator<'a> {
-    fn initialize_ports(&mut self, ports: &mut PortManager<'a>)  {
+    fn initialize_ports(&mut self, ports: &mut PortManager<'a>)
+    {
         self.sine.initialize_ports(ports);
     }
 
-    fn generate(&mut self, ports: &mut PortManager) {
+    fn generate(&mut self, ports: &mut PortManager)
+    {
         // find the sine out port
         let mut out = None;
         match ports.find_ports(&self.name) {
@@ -28,7 +31,7 @@ impl<'a> Component<'a> for SquareWaveOscillator<'a> {
                 for port in ports {
                     match port.promote_to_output() {
                         Ok(port) => out = Some(port),
-                        Err(_)   => (),
+                        Err(_) => (),
                     }
                 }
             },
@@ -51,9 +54,8 @@ impl<'a> Component<'a> for SquareWaveOscillator<'a> {
                 }
             },
 
-            None => ()
+            None => (),
         }
 
     }
 }
-

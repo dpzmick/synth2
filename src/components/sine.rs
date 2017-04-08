@@ -1,10 +1,12 @@
-use components::Component;
-use ports::{PortManager, InputPortHandle, OutputPortHandle};
 
-use std::f32;
 
 // TODO FIX THIS!
+
 use SRATE;
+use components::Component;
+use ports::{InputPortHandle, OutputPortHandle, PortManager};
+
+use std::f32;
 
 pub struct SineWaveOscillator<'a> {
     name: String,
@@ -14,7 +16,8 @@ pub struct SineWaveOscillator<'a> {
 }
 
 impl<'a> SineWaveOscillator<'a> {
-    pub fn new(name: String) -> Self {
+    pub fn new(name: String) -> Self
+    {
         Self {
             name,
             phase: 0.0,
@@ -23,25 +26,34 @@ impl<'a> SineWaveOscillator<'a> {
         }
     }
 
-    fn sine(&self, t: f32) -> f32 {
+    fn sine(&self, t: f32) -> f32
+    {
         assert!(t >= 0.0 && t <= 1.0);
         (2.0 * t * f32::consts::PI).sin()
     }
 }
 
 impl<'a> Component<'a> for SineWaveOscillator<'a> {
-    fn initialize_ports(&mut self, ports: &mut PortManager<'a>) {
+    fn initialize_ports(&mut self, ports: &mut PortManager<'a>)
+    {
         // TODO error handling?
 
-        self.frequency_port =
-            Some(ports.register_input_port(self.name.clone(), "frequency_in".to_string()).unwrap());
+        self.frequency_port = Some(ports
+                                       .register_input_port(self.name.clone(),
+                                                            "frequency_in".to_string())
+                                       .unwrap());
 
-        self.output_port =
-            Some(ports.register_output_port(self.name.clone(), "samples_out".to_string()).unwrap());
+        self.output_port = Some(ports
+                                    .register_output_port(self.name.clone(),
+                                                          "samples_out".to_string())
+                                    .unwrap());
     }
 
-    fn generate(&mut self, ports: &mut PortManager) {
-        if self.frequency_port.is_none() || self.output_port.is_none() { return; }
+    fn generate(&mut self, ports: &mut PortManager)
+    {
+        if self.frequency_port.is_none() || self.output_port.is_none() {
+            return;
+        }
 
         let freq = ports.get_port_value(&self.frequency_port.unwrap());
         self.phase += (freq / SRATE);

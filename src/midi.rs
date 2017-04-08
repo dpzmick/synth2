@@ -31,11 +31,12 @@ pub enum MidiStatus {
 
 /// A struct holding a MIDI message and some extra data
 pub struct MidiMessage<'a> {
-    pub data: &'a [u8]
+    pub data: &'a [u8],
 }
 
 impl<'a> MidiMessage<'a> {
-    pub fn status(&self) -> MidiStatus {
+    pub fn status(&self) -> MidiStatus
+    {
         MidiStatus::from_u8(self.data[0]).unwrap()
     }
 }
