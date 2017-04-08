@@ -390,7 +390,7 @@ struct Soundscape<'a> {
 impl<'a> Soundscape<'a> {
     fn new() -> Self {
         let mut voices = Vec::new();
-        for _ in 0..8 {
+        for _ in 0..16 {
             voices.push(Voice::new());
         }
 
@@ -413,6 +413,8 @@ impl<'a> Soundscape<'a> {
                 }
             }
         }
+
+        // TODO replacement policy
     }
 
     fn note_off(&mut self, freq: f32) {
@@ -429,17 +431,13 @@ impl<'a> Soundscape<'a> {
     }
 
     fn generate(&mut self) -> f32 {
-        let mut count = 0;
         let mut sample = 0.0;
         for voice in self.voices.iter_mut() {
             let subsample = voice.generate();
-            if subsample != 0.0 {
-                count += 1
-            }
             sample += subsample;
         }
 
-        sample * (1.0 / count as f32)
+        sample * (1.0 / self.voices.len() as f32)
     }
 }
 
