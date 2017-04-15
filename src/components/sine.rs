@@ -56,7 +56,7 @@ impl<'a> Component<'a> for SineWaveOscillator<'a> {
         }
 
         let freq = ports.get_port_value(&self.frequency_port.unwrap());
-        self.phase += (freq / SRATE);
+        self.phase += freq / SRATE;
 
         while self.phase > 1.0 {
             self.phase -= 1.0;

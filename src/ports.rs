@@ -4,17 +4,15 @@ use std::marker::PhantomData;
 // I'm not really sure I like the way this port handle thing is working out
 // This is quite a bit of complexity just to get a little a bit of extra type safety
 
-// TODO private?
 pub type PortId = usize;
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
-enum PortDirection {
+pub enum PortDirection {
     Input,
     Output,
 }
 
-// TODO private?
-trait PortHandle {
+pub trait PortHandle {
     fn id(&self) -> PortId;
     fn direction(&self) -> PortDirection;
 }
@@ -312,6 +310,7 @@ impl<'a> PortManager<'a> {
             .retain(|&(a, b)| a != p1.id && b != p2.id);
     }
 
+    /// Connects a pair of ports by name. Each pair is given as (component, port)
     pub fn connect_by_name(&mut self,
                            p1: (&str, &str),
                            p2: (&str, &str))
