@@ -1,5 +1,7 @@
-#[macro_use] extern crate conrod;
-#[macro_use] extern crate enum_primitive;
+#[macro_use]
+extern crate conrod;
+#[macro_use]
+extern crate enum_primitive;
 extern crate easyjack as jack;
 
 mod components;

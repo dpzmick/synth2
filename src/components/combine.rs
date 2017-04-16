@@ -53,7 +53,8 @@ impl<'a> Component<'a> for CombineInputs<'a> {
         }
     }
 
-    fn get_name(&self) -> String {
+    fn get_name(&self) -> String
+    {
         self.name.clone()
     }
 }

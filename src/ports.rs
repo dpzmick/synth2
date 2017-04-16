@@ -357,29 +357,36 @@ impl<'a> PortManager<'a> {
             })
     }
 
-    pub fn get_connections(&self) -> Vec<(OutputPortHandle, InputPortHandle)> {
+    pub fn get_connections(&self) -> Vec<(OutputPortHandle, InputPortHandle)>
+    {
         let mut v = Vec::new();
         for &(o, i) in self.connections.iter() {
-            let e = (OutputPortHandle { id: o, phantom: PhantomData },
-                     InputPortHandle { id: i, phantom: PhantomData });
+            let e = (OutputPortHandle {
+                         id: o,
+                         phantom: PhantomData,
+                     },
+                     InputPortHandle {
+                         id: i,
+                         phantom: PhantomData,
+                     });
             v.push(e);
         }
 
         v
     }
 
-    pub fn get_component<P: PortHandle>(&self, p: P) -> Option<String> {
+    pub fn get_component<P: PortHandle>(&self, p: P) -> Option<String>
+    {
         for (component, ports) in self.ports_meta.iter() {
             for (port, handle) in ports.iter() {
                 if handle.id() == p.id() {
-                    return Some(component.clone())
+                    return Some(component.clone());
                 }
             }
         }
 
-        return None
+        return None;
     }
-
 }
 
 #[test]

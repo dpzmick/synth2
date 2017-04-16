@@ -1,5 +1,5 @@
 use components::Component;
-use ports::{PortManager, InputPortHandle, OutputPortHandle};
+use ports::{InputPortHandle, OutputPortHandle, PortManager};
 
 /// A single instance of the graph
 pub struct Voice<'a> {
@@ -84,7 +84,8 @@ impl<'a> Voice<'a> {
         self.ports.get_port_value(&self.samples_out)
     }
 
-    pub fn get_components(&self) -> Vec<String> {
+    pub fn get_components(&self) -> Vec<String>
+    {
         // TODO NOT realtime safe
         // TODO return an iterator
         let mut ret = Vec::new();
@@ -99,7 +100,8 @@ impl<'a> Voice<'a> {
     }
 
     // TODO actually retrurn connections by ports
-    pub fn get_connections(&self) -> Vec<(String, String)> {
+    pub fn get_connections(&self) -> Vec<(String, String)>
+    {
         let mut v = Vec::new();
         for (o, i) in self.ports.get_connections() {
             let e = (self.ports.get_component(o).unwrap(), self.ports.get_component(i).unwrap());

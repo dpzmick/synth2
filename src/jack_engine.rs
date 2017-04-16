@@ -1,10 +1,11 @@
-use std::mem;
-use std;
+
+
+use jack;
 
 use midi::{MidiMessage, MidiStatus};
 use soundscape::Soundscape;
-
-use jack;
+use std;
+use std::mem;
 
 type OPort = jack::OutputPortHandle<jack::DefaultAudioSample>;
 type IPort = jack::InputPortHandle<jack::MidiEvent>;
@@ -82,7 +83,8 @@ impl<'a> jack::ProcessHandler for AudioHandler<'a> {
     }
 }
 
-pub fn run_audio_thread(soundscape: Soundscape) {
+pub fn run_audio_thread(soundscape: Soundscape)
+{
     let mut c = jack::Client::open("sine", jack::options::NO_START_SERVER)
         .unwrap()
         .0;

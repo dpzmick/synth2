@@ -42,7 +42,8 @@ impl<'a> Component<'a> for Math<'a> {
         ports.set_port_value(&self.output.unwrap(), (self.math_function)(i))
     }
 
-    fn get_name(&self) -> String {
+    fn get_name(&self) -> String
+    {
         self.name.clone()
     }
 }

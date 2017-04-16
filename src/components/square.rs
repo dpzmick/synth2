@@ -59,7 +59,8 @@ impl<'a> Component<'a> for SquareWaveOscillator<'a> {
 
     }
 
-    fn get_name(&self) -> String {
+    fn get_name(&self) -> String
+    {
         self.name.clone()
     }
 }

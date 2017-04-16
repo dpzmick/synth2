@@ -1,20 +1,21 @@
-use std::collections::HashMap;
+
+use conrod;
 
 use conrod::Positionable;
 use conrod::Sizeable;
 use conrod::Widget;
+use conrod::backend::glium::glium;
 use conrod::backend::glium::glium::DisplayBuild;
 use conrod::backend::glium::glium::Surface;
-use conrod::backend::glium::glium;
 use conrod::glium::backend::glutin_backend::GlutinFacade;
 use conrod::glium::glutin::Event;
 use conrod::widget::Line;
-use conrod;
-
-use voice::Voice;
-use ui::drag_rect::DragRect;
 
 use std::cell::UnsafeCell;
+use std::collections::HashMap;
+use ui::drag_rect::DragRect;
+
+use voice::Voice;
 
 const WIDTH: u32 = 400;
 const HEIGHT: u32 = 200;
@@ -35,7 +36,8 @@ struct LogicalUi<'a> {
 }
 
 impl<'a> LogicalUi<'a> {
-    fn new() -> Self {
+    fn new() -> Self
+    {
         let mut voice = Voice::new();
         voice.example_connections();
 
@@ -47,21 +49,26 @@ impl<'a> LogicalUi<'a> {
     }
 
     /// Get or create an id for an element
-    fn get_id(&mut self, name: String, ui: &mut conrod::UiCell) -> conrod::widget::Id {
-        *self.ids.entry(name).or_insert_with(|| ui.widget_id_generator().next())
+    fn get_id(&mut self, name: String, ui: &mut conrod::UiCell) -> conrod::widget::Id
+    {
+        *self.ids
+             .entry(name)
+             .or_insert_with(|| ui.widget_id_generator().next())
     }
 
-    fn draw(&mut self, ui: &mut conrod::UiCell) {
+    fn draw(&mut self, ui: &mut conrod::UiCell)
+    {
         let mut i = 0.0;
         for comp in self.voice.get_components() {
-            self.rect_loc.entry(comp.clone()).or_insert([i * 20.0, i * 20.0]);
+            self.rect_loc
+                .entry(comp.clone())
+                .or_insert([i * 20.0, i * 20.0]);
             let id = self.get_id(comp.clone(), ui);
 
             if let Some(loc) = DragRect::new(comp.clone())
-                                .xy(self.rect_loc[&comp.clone()])
-                                .wh([200.0, 50.0])
-                                .set(id, ui)
-            {
+                   .xy(self.rect_loc[&comp.clone()])
+                   .wh([200.0, 50.0])
+                   .set(id, ui) {
                 println!("got event: {:?}", loc);
                 let mut rect_loc = self.rect_loc.get_mut(&comp.clone()).unwrap();
                 rect_loc[0] += loc.to[0];
@@ -74,31 +81,32 @@ impl<'a> LogicalUi<'a> {
         // for all connections, draw a line
         for (c1, c2) in self.voice.get_connections().into_iter() {
             let nid = c1.clone() + ":" + &c2;
-            Line::new(self.rect_loc[&c1], self.rect_loc[&c2])
-                .set(self.get_id(nid, ui), ui);
+            Line::new(self.rect_loc[&c1], self.rect_loc[&c2]).set(self.get_id(nid, ui), ui);
         }
     }
 }
 
 pub struct SynthUi<'a> {
-    display:         GlutinFacade,
-    ui:              conrod::Ui,
-    renderer:        conrod::backend::glium::Renderer,
-    image_map:       conrod::image::Map<glium::texture::Texture2d>,
+    display: GlutinFacade,
+    ui: conrod::Ui,
+    renderer: conrod::backend::glium::Renderer,
+    image_map: conrod::image::Map<glium::texture::Texture2d>,
     ui_needs_update: bool,
-    logic:           LogicalUi<'a>,
+    logic: LogicalUi<'a>,
 }
 
 // private impl
 impl<'a> SynthUi<'a> {
-    fn draw_ui(&mut self) {
+    fn draw_ui(&mut self)
+    {
         self.logic.draw(&mut self.ui.set_widgets());
     }
 }
 
 impl<'a> SynthUi<'a> {
     /// Initializes a UI window
-    pub fn new() -> Self {
+    pub fn new() -> Self
+    {
         let display = glium::glutin::WindowBuilder::new()
             .with_vsync()
             .with_dimensions(WIDTH, HEIGHT)
@@ -123,7 +131,8 @@ impl<'a> SynthUi<'a> {
     }
 
     /// Update the UI and
-    pub fn event_loop(&mut self) -> Vec<UiEvent> {
+    pub fn event_loop(&mut self) -> Vec<UiEvent>
+    {
         let mut events: Vec<_> = self.display.poll_events().collect();
 
         if events.is_empty() && !self.ui_needs_update {
@@ -150,10 +159,13 @@ impl<'a> SynthUi<'a> {
 
         // Render the `Ui` and then display it on the screen.
         if let Some(primitives) = self.ui.draw_if_changed() {
-            self.renderer.fill(&self.display, primitives, &self.image_map);
+            self.renderer
+                .fill(&self.display, primitives, &self.image_map);
             let mut target = self.display.draw();
             target.clear_color(0.0, 0.0, 0.0, 1.0);
-            self.renderer.draw(&self.display, &mut target, &self.image_map).unwrap();
+            self.renderer
+                .draw(&self.display, &mut target, &self.image_map)
+                .unwrap();
             target.finish().unwrap();
         }
 

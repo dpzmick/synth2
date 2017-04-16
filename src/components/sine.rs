@@ -66,7 +66,8 @@ impl<'a> Component<'a> for SineWaveOscillator<'a> {
         ports.set_port_value(&self.output_port.unwrap(), v);
     }
 
-    fn get_name(&self) -> String {
+    fn get_name(&self) -> String
+    {
         self.name.clone()
     }
 }
