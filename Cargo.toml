@@ -8,5 +8,9 @@ easyjack = "0.1.2"
 enum_primitive = "0.1.1"
 time = "0.1"
 
+[dependencies.conrod]
+git = "https://github.com/PistonDevelopers/conrod.git"
+features = ["glium", "winit"]
+
 [profile.release]
 debug = true
