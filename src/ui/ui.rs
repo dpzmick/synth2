@@ -1,14 +1,15 @@
 use std::collections::HashMap;
 
-use conrod;
-use conrod::backend::glium::glium;
-use conrod::backend::glium::glium::DisplayBuild;
-use conrod::backend::glium::glium::Surface;
-use conrod::glium::backend::glutin_backend::GlutinFacade;
-use conrod::glium::glutin::Event;
 use conrod::Positionable;
 use conrod::Sizeable;
 use conrod::Widget;
+use conrod::backend::glium::glium::DisplayBuild;
+use conrod::backend::glium::glium::Surface;
+use conrod::backend::glium::glium;
+use conrod::glium::backend::glutin_backend::GlutinFacade;
+use conrod::glium::glutin::Event;
+use conrod::widget::Line;
+use conrod;
 
 use voice::Voice;
 use ui::drag_rect::DragRect;
@@ -55,11 +56,10 @@ impl<'a> LogicalUi<'a> {
         for comp in self.voice.get_components() {
             self.rect_loc.entry(comp.clone()).or_insert([i * 20.0, i * 20.0]);
             let id = self.get_id(comp.clone(), ui);
-            println!("comp: {}, loc: {:?}, id: {:?}", comp, self.rect_loc[&comp], id);
 
             if let Some(loc) = DragRect::new(comp.clone())
                                 .xy(self.rect_loc[&comp.clone()])
-                                .wh([50.0, 50.0])
+                                .wh([200.0, 50.0])
                                 .set(id, ui)
             {
                 println!("got event: {:?}", loc);
@@ -69,6 +69,13 @@ impl<'a> LogicalUi<'a> {
             }
 
             i += 1.0;
+        }
+
+        // for all connections, draw a line
+        for (c1, c2) in self.voice.get_connections().into_iter() {
+            let nid = c1.clone() + ":" + &c2;
+            Line::new(self.rect_loc[&c1], self.rect_loc[&c2])
+                .set(self.get_id(nid, ui), ui);
         }
     }
 }
