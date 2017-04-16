@@ -52,4 +52,8 @@ impl<'a> Component<'a> for OnOff<'a> {
             ports.set_port_value(&self.samples_out.unwrap(), out);
         }
     }
+
+    fn get_name(&self) -> String {
+        self.name.clone()
+    }
 }

@@ -52,4 +52,8 @@ impl<'a> Component<'a> for CombineInputs<'a> {
             ports.set_port_value(&self.output.unwrap(), v);
         }
     }
+
+    fn get_name(&self) -> String {
+        self.name.clone()
+    }
 }

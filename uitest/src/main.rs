@@ -33,6 +33,8 @@ fn main() {
         pos2: [0.0, -20.0],
         id2: ui.widget_id_generator().next(),
         id3: ui.widget_id_generator().next(),
+        activeMenu: None,
+        selected: None,
     };
 
     'main: loop {
@@ -49,7 +51,6 @@ fn main() {
         }
 
         ui_needs_update = false;
-
 
         last_update = std::time::Instant::now();
 
@@ -116,10 +117,15 @@ impl DragRect {
     }
 }
 
+enum DragRectEv {
+    Drag(conrod::event::Drag),
+    RightClick(conrod::event::Click),
+}
+
 impl Widget for DragRect {
     type State = DragRectIds;
     type Style = DragRectStyle;
-    type Event = Option<conrod::event::Drag>;
+    type Event = Option<DragRectEv>;
 
     fn common(&self) -> &widget::CommonBuilder {
         &self.common
@@ -152,17 +158,21 @@ impl Widget for DragRect {
             .border_color(color::LIGHT_RED)
             .set(state.rectangle, ui);
 
-        let mut last_loc = None;
+        let mut last_ev = None;
         for ev in ui.widget_input(id).events() {
             match ev {
                 event::Widget::Drag(ev) if ev.button == input::MouseButton::Left => {
-                    last_loc = Some(ev)
+                    last_ev = Some(DragRectEv::Drag(ev))
+                },
+
+                event::Widget::Click(ev) if ev.button == input::MouseButton::Right => {
+                    last_ev = Some(DragRectEv::RightClick(ev))
                 },
                 _ => ()
             }
         }
 
-        last_loc
+        last_ev
     }
 }
 
@@ -174,6 +184,9 @@ struct ShittyState {
     pub id2: conrod::widget::Id,
 
     pub id3: conrod::widget::Id,
+
+    pub activeMenu: Option<conrod::Point>,
+    pub selected: Option<usize>,
 }
 
 fn set_ui(ref mut ui: conrod::UiCell, st: &mut ShittyState) {
@@ -181,24 +194,57 @@ fn set_ui(ref mut ui: conrod::UiCell, st: &mut ShittyState) {
     use conrod::widget::Line;
     use conrod::widget::DropDownList;
 
-    if let Some(loc) = DragRect::new()
-                    .xy(st.pos1)
-                    .wh([50.0, 50.0])
-                    .set(st.id1, ui)
+    // if let Some(loc) = DragRect::new()
+    //                 .xy(st.pos1)
+    //                 .wh([50.0, 50.0])
+    //                 .set(st.id1, ui)
+    // {
+    //     st.pos1[0] += loc.to[0];
+    //     st.pos1[1] += loc.to[1];
+    // }
+
+    match DragRect::new()
+            .xy(st.pos2)
+            .wh([50.0, 50.0])
+            .set(st.id2, ui)
     {
-        st.pos1[0] += loc.to[0];
-        st.pos1[1] += loc.to[1];
+        Some(DragRectEv::Drag(loc)) => {
+            st.pos2[0] += loc.to[0];
+            st.pos2[1] += loc.to[1];
+        },
+
+        Some(DragRectEv::RightClick(click)) => {
+            let mut coords = [0.0, 0.0];
+            coords[0] = st.pos2[0] + click.xy[0];
+            coords[1] = st.pos2[1] + click.xy[1];
+            println!("{:?}, coords: {:?}", click, coords);
+            st.activeMenu = Some(coords);
+        },
+
+        None => ()
     }
 
-    if let Some(loc) = DragRect::new()
-                    .xy(st.pos2)
-                    .wh([50.0, 50.0])
-                    .set(st.id2, ui)
-    {
-        st.pos2[0] += loc.to[0];
-        st.pos2[1] += loc.to[1];
+    // Line::new(st.pos1, st.pos2)
+    //     .set(st.id3, ui);
+
+    match st.activeMenu {
+        Some(pt) => {
+            let items = ["cat", "dog", "fish"];
+
+            let res = DropDownList::new(&items, st.selected)
+                .xy(pt)
+                .wh([30.0, 50.0])
+                .set(st.id3, ui);
+
+            if (res.is_some()) {
+                st.selected = res;
+                st.activeMenu = None;
+            }
+        },
+
+        None => {
+            st.selected = None;
+        }
     }
 
-    Line::new(st.pos1, st.pos2)
-        .set(st.id3, ui);
 }

@@ -1,9 +1,19 @@
+use std::collections::HashMap;
+
 use conrod;
 use conrod::backend::glium::glium;
 use conrod::backend::glium::glium::DisplayBuild;
 use conrod::backend::glium::glium::Surface;
 use conrod::glium::backend::glutin_backend::GlutinFacade;
 use conrod::glium::glutin::Event;
+use conrod::Positionable;
+use conrod::Sizeable;
+use conrod::Widget;
+
+use voice::Voice;
+use ui::drag_rect::DragRect;
+
+use std::cell::UnsafeCell;
 
 const WIDTH: u32 = 400;
 const HEIGHT: u32 = 200;
@@ -14,15 +24,53 @@ pub enum UiEvent {
     Exit,
 }
 
-pub struct SynthUi {
+pub struct SynthUi<'a> {
     display: GlutinFacade,
-    ui: conrod::Ui,
+    ui: UnsafeCell<conrod::Ui>,
     renderer: conrod::backend::glium::Renderer,
     image_map: conrod::image::Map<glium::texture::Texture2d>,
+    ui_needs_update: bool,
+
+    // actual synth logic
+    voice: Voice<'a>,
+    ids: HashMap<String, conrod::widget::Id>,
+    rect_loc: HashMap<String, conrod::Point>,
 }
 
+// private impl
+impl<'a> SynthUi<'a> {
+    /// Get or create an id for an element
+    fn get_id(&mut self, name: String) -> conrod::widget::Id {
+        let mut gen = unsafe { (*self.ui.get()).widget_id_generator() };
+        *self.ids.entry(name).or_insert_with(|| gen.next())
+    }
 
-impl SynthUi {
+    fn draw_ui(&mut self) {
+        let mut cell = unsafe { (*self.ui.get()).set_widgets() };
+
+        let mut i = 0.0;
+        for comp in self.voice.get_components() {
+            self.rect_loc.entry(comp.clone()).or_insert([i * 20.0, i * 20.0]);
+            let id = self.get_id(comp.clone());
+            println!("comp: {}, loc: {:?}, id: {:?}", comp, self.rect_loc[&comp], id);
+
+            if let Some(loc) = DragRect::new(comp.clone())
+                                .xy(self.rect_loc[&comp.clone()])
+                                .wh([50.0, 50.0])
+                                .set(id, &mut cell)
+            {
+                println!("got event: {:?}", loc);
+                let mut rect_loc = self.rect_loc.get_mut(&comp.clone()).unwrap();
+                rect_loc[0] += loc.to[0];
+                rect_loc[1] += loc.to[1];
+            }
+
+            i += 1.0;
+        }
+    }
+}
+
+impl<'a> SynthUi<'a> {
     /// Initializes a UI window
     pub fn new() -> Self {
         let display = glium::glutin::WindowBuilder::new()
@@ -38,11 +86,18 @@ impl SynthUi {
         let renderer = conrod::backend::glium::Renderer::new(&display).unwrap();
         let image_map = conrod::image::Map::<glium::texture::Texture2d>::new();
 
+        let mut voice = Voice::new();
+        voice.example_connections();
+
         SynthUi {
             display,
-            ui,
+            ui: UnsafeCell::new(ui),
             renderer,
             image_map,
+            ui_needs_update: false,
+            voice,
+            ids: HashMap::new(),
+            rect_loc: HashMap::new(),
         }
     }
 
@@ -50,18 +105,18 @@ impl SynthUi {
     pub fn event_loop(&mut self) -> Vec<UiEvent> {
         let mut events: Vec<_> = self.display.poll_events().collect();
 
-        if events.is_empty() { // && !ui_needs_update {
+        if events.is_empty() && !self.ui_needs_update {
             events.extend(self.display.wait_events().next());
         }
 
-        //ui_needs_update = false;
+        self.ui_needs_update = false;
 
         // Handle all events.
         for event in events {
             // Use the `winit` backend feature to convert the winit event to a conrod one.
             if let Some(event) = conrod::backend::winit::convert(event.clone(), &self.display) {
-                self.ui.handle_event(event);
-                //ui_needs_update = true;
+                unsafe { (*self.ui.get()).handle_event(event) };
+                self.ui_needs_update = true;
             }
 
             match event {
@@ -70,10 +125,10 @@ impl SynthUi {
             }
         }
 
-        //set_ui(ui.set_widgets(), &mut st);
+        self.draw_ui();
 
         // Render the `Ui` and then display it on the screen.
-        if let Some(primitives) = self.ui.draw_if_changed() {
+        if let Some(primitives) = unsafe { (*self.ui.get()).draw_if_changed() } {
             self.renderer.fill(&self.display, primitives, &self.image_map);
             let mut target = self.display.draw();
             target.clear_color(0.0, 0.0, 0.0, 1.0);
