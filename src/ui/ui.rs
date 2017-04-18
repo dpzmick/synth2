@@ -13,12 +13,13 @@ use conrod::widget::Line;
 
 use std::cell::UnsafeCell;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use ui::drag_rect::DragRect;
 
 use voice::Voice;
 
-const WIDTH: u32 = 400;
-const HEIGHT: u32 = 200;
+const WIDTH: u32 = 3000;
+const HEIGHT: u32 = 2000;
 const FONT_PATH: &'static str = "/usr/share/fonts/TTF/Inconsolata-Regular.ttf";
 
 #[derive(Debug)]
@@ -66,10 +67,10 @@ impl<'a> LogicalUi<'a> {
             let id = self.get_id(comp.clone(), ui);
 
             if let Some(loc) = DragRect::new(comp.clone())
-                   .xy(self.rect_loc[&comp.clone()])
+                   .xy(self.rect_loc[&comp])
                    .wh([200.0, 50.0])
-                   .set(id, ui) {
-                println!("got event: {:?}", loc);
+                   .set(id, ui)
+            {
                 let mut rect_loc = self.rect_loc.get_mut(&comp.clone()).unwrap();
                 rect_loc[0] += loc.to[0];
                 rect_loc[1] += loc.to[1];
@@ -79,9 +80,21 @@ impl<'a> LogicalUi<'a> {
         }
 
         // for all connections, draw a line
+        let mut all_conns = HashSet::new();
         for (c1, c2) in self.voice.get_connections().into_iter() {
+            if c1 < c2 {
+                all_conns.insert( (c1.to_string(), c2.to_string()) );
+            } else {
+                all_conns.insert( (c2.to_string(), c1.to_string()) );
+            }
+        }
+
+        for (c1, c2) in all_conns.into_iter() {
             let nid = c1.clone() + ":" + &c2;
-            Line::new(self.rect_loc[&c1], self.rect_loc[&c2]).set(self.get_id(nid, ui), ui);
+            let id = self.get_id(nid, ui);
+            Line::new(self.rect_loc[&c1], self.rect_loc[&c2])
+                .thickness(5.0)
+                .set(id, ui);
         }
     }
 }
@@ -145,6 +158,7 @@ impl<'a> SynthUi<'a> {
         for event in events {
             // Use the `winit` backend feature to convert the winit event to a conrod one.
             if let Some(event) = conrod::backend::winit::convert(event.clone(), &self.display) {
+                println!("{:?}", event);
                 self.ui.handle_event(event);
                 self.ui_needs_update = true;
             }

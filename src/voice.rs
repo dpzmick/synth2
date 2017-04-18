@@ -89,6 +89,7 @@ impl<'a> Voice<'a> {
         // TODO NOT realtime safe
         // TODO return an iterator
         let mut ret = Vec::new();
+
         for comp in self.components.iter() {
             ret.push(comp.get_name())
         }
@@ -118,13 +119,13 @@ impl<'a> Voice<'a> {
         // creates two harmonics
         // midi input goes through here to get second harmonic
         self.add_component(Math::new("math".to_string(), |x| x * 2.0));
-        self.add_component(SquareWaveOscillator::new("harmonic_osc".to_string()));
+        // self.add_component(SquareWaveOscillator::new("harmonic_osc".to_string()));
 
         // midi input also sent through here
         self.add_component(SineWaveOscillator::new("base_osc".to_string()));
 
-        // create an input combiner with 2 inputs
-        self.add_component(CombineInputs::new("combine".to_string(), 2));
+        // // create an input combiner with 2 inputs
+        // self.add_component(CombineInputs::new("combine".to_string(), 2));
 
         // finally, gate is sent through the OnOff
         self.add_component(OnOff::new("envelope".to_string()));
@@ -135,15 +136,15 @@ impl<'a> Voice<'a> {
                      (("voice", "midi_frequency_out"), ("math", "input")),
 
                      // finish up the connections for math
-                     (("math", "output"), ("harmonic_osc", "frequency_in")),
+                     // (("math", "output"), ("harmonic_osc", "frequency_in")),
 
                      // connect the oscillators to the combiner
-                     (("base_osc", "samples_out"), ("combine", "combine_input0")),
-                     (("harmonic_osc", "samples_out"), ("combine", "combine_input1")),
+                     // (("base_osc", "samples_out"), ("combine", "combine_input0")),
+                     // (("harmonic_osc", "samples_out"), ("combine", "combine_input1")),
 
                      // set up the envelope
                      (("voice", "midi_gate_out"), ("envelope", "gate_in")),
-                     (("combine", "out"), ("envelope", "samples_in")),
+                     // (("combine", "out"), ("envelope", "samples_in")),
 
                      // send audio back to the card
                      (("envelope", "samples_out"), ("voice", "samples_in"))];

@@ -344,11 +344,11 @@ impl<'a> PortManager<'a> {
 
     pub fn find_ports(&self, component: &str) -> Option<Vec<UnknownPortHandle<'a>>>
     {
-        // must be realtime safe
+        // TODO must be realtime safe
         self.ports_meta
             .get(component)
             .map(|comp| {
-                let mut res = Vec::new();
+                let mut res = Vec::new(); // TODO I can't be doing this!
                 for handle in comp.values() {
                     res.push(handle.clone())
                 }
@@ -357,8 +357,10 @@ impl<'a> PortManager<'a> {
             })
     }
 
+    /// Get all of the port connections known by the system
     pub fn get_connections(&self) -> Vec<(OutputPortHandle, InputPortHandle)>
     {
+        // not realtime safe
         let mut v = Vec::new();
         for &(o, i) in self.connections.iter() {
             let e = (OutputPortHandle {
@@ -375,8 +377,10 @@ impl<'a> PortManager<'a> {
         v
     }
 
+    /// Lookup the component associated with a port handle
     pub fn get_component<P: PortHandle>(&self, p: P) -> Option<String>
     {
+        // probably realtime safe but super slow
         for (component, ports) in self.ports_meta.iter() {
             for (port, handle) in ports.iter() {
                 if handle.id() == p.id() {
