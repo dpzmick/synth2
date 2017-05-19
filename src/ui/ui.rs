@@ -1,6 +1,4 @@
-
 use conrod;
-
 use conrod::Positionable;
 use conrod::Sizeable;
 use conrod::Widget;
@@ -8,13 +6,12 @@ use conrod::backend::glium::glium;
 use conrod::backend::glium::glium::DisplayBuild;
 use conrod::backend::glium::glium::Surface;
 use conrod::glium::backend::glutin_backend::GlutinFacade;
-use conrod::glium::glutin::Event;
+// use conrod::glium::glutin::Event;
 use conrod::widget::Line;
 
-use std::cell::UnsafeCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
-use ui::drag_rect::DragRect;
+use ui::drag_rect;
 
 use voice::Voice;
 
@@ -28,12 +25,14 @@ pub enum UiEvent {
 }
 
 // TODO rename this, this is some component?
-// this exists to hide most of the conrod boilerplate and focus only on the logic that we actually
+// this exists to hide most of the conrod boilerplate and focus only on the
+// logic that we actually
 // care about
 struct LogicalUi<'a> {
     voice: Voice<'a>,
+    // TODO hash from something other than a string
     ids: HashMap<String, conrod::widget::Id>,
-    rect_loc: HashMap<String, conrod::Point>,
+    states: HashMap<String, drag_rect::HiddenState>,
 }
 
 impl<'a> LogicalUi<'a> {
@@ -45,7 +44,7 @@ impl<'a> LogicalUi<'a> {
         Self {
             voice,
             ids: HashMap::new(),
-            rect_loc: HashMap::new(),
+            states: HashMap::new(),
         }
     }
 
@@ -59,43 +58,28 @@ impl<'a> LogicalUi<'a> {
 
     fn draw(&mut self, ui: &mut conrod::UiCell)
     {
-        let mut i = 0.0;
         for comp in self.voice.get_components() {
-            self.rect_loc
-                .entry(comp.clone())
-                .or_insert([i * 20.0, i * 20.0]);
             let id = self.get_id(comp.clone(), ui);
 
-            if let Some(loc) = DragRect::new(comp.clone())
-                   .xy(self.rect_loc[&comp])
-                   .wh([200.0, 50.0])
-                   .set(id, ui)
-            {
-                let mut rect_loc = self.rect_loc.get_mut(&comp.clone()).unwrap();
-                rect_loc[0] += loc.to[0];
-                rect_loc[1] += loc.to[1];
-            }
+            let state: &mut drag_rect::HiddenState =
+                self.states
+                    .entry(comp.clone())
+                    .or_insert(drag_rect::DragRect::make_state([0.0, 0.0]));
 
-            i += 1.0;
-        }
-
-        // for all connections, draw a line
-        let mut all_conns = HashSet::new();
-        for (c1, c2) in self.voice.get_connections().into_iter() {
-            if c1 < c2 {
-                all_conns.insert( (c1.to_string(), c2.to_string()) );
-            } else {
-                all_conns.insert( (c2.to_string(), c1.to_string()) );
-            }
-        }
-
-        for (c1, c2) in all_conns.into_iter() {
-            let nid = c1.clone() + ":" + &c2;
-            let id = self.get_id(nid, ui);
-            Line::new(self.rect_loc[&c1], self.rect_loc[&c2])
-                .thickness(5.0)
+            // the rects move themselves around
+            drag_rect::DragRect::new(comp.clone(), state)
+                .wh([200.0, 50.0])
                 .set(id, ui);
         }
+
+        // // for all connections, draw a line
+        // for (c1, c2) in self.voice.get_connections().into_iter() {
+        //     let nid = c1.clone() + ":" + &c2;
+        //     let id = self.get_id(nid, ui);
+        //     Line::new(self.rect_loc[&c1], self.rect_loc[&c2])
+        //         .thickness(5.0)
+        //         .set(id, ui);
+        // }
     }
 }
 
@@ -158,7 +142,6 @@ impl<'a> SynthUi<'a> {
         for event in events {
             // Use the `winit` backend feature to convert the winit event to a conrod one.
             if let Some(event) = conrod::backend::winit::convert(event.clone(), &self.display) {
-                println!("{:?}", event);
                 self.ui.handle_event(event);
                 self.ui_needs_update = true;
             }

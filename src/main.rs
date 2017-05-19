@@ -18,18 +18,21 @@ use ui::SynthUi;
 
 static SRATE: f32 = 44100.0;
 
+fn stop_telling_me_the_code_is_dead()
+{
+    // start the realtime soundscape
+    let mut soundscape = Soundscape::new();
+    soundscape.example_connections();
+    run_audio_thread(soundscape);
+    loop {
+        use std::thread;
+        use std::time::Duration;
+        thread::sleep(Duration::from_millis(100000));
+    }
+}
+
 fn main()
 {
-    // // start the realtime soundscape
-    // let mut soundscape = Soundscape::new();
-    // soundscape.example_connections();
-    // run_audio_thread(soundscape);
-    // loop {
-    //     use std::thread;
-    //     use std::time::Duration;
-    //     thread::sleep(Duration::from_millis(100000));
-    // }
-
     let mut last_update = std::time::Instant::now();
     let mut gui = SynthUi::new();
 
@@ -46,5 +49,9 @@ fn main()
                 _ => (),
             }
         }
+    }
+
+    if false {
+        stop_telling_me_the_code_is_dead();
     }
 }

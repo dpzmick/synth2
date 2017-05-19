@@ -38,9 +38,9 @@ impl<'a> Component<'a> for SquareWaveOscillator<'a> {
             None => (),
         };
 
-        // we can write to the output port, then overwrite the value
-        // nothing else can be generating while we are generating so there is no chance of this
-        // value leaking into some other component
+        // we can write to the output port, then overwrite the value nothing
+        // else can be generating while we are generating so there is no chance
+        // of this value leaking into some other component
 
         match out {
             Some(out) => {

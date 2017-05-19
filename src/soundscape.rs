@@ -1,7 +1,8 @@
 use voice::Voice;
 
 /// A soundscape contains many voices, manages NoteOn/NoteOff for each voice
-/// For the moment, this will just make lots of copies. There's lots of room for optimization
+/// For the moment, this will just make lots of copies. There's lots of room
+/// for optimization
 /// though
 pub struct Soundscape<'a> {
     // this would be an array, but arrays are so severely limited in rust that I'm using a vector.
