@@ -1,3 +1,7 @@
+// clippy
+#![cfg_attr(feature="clippy", feature(plugin))]
+#![cfg_attr(feature="clippy", plugin(clippy))]
+
 #[macro_use]
 extern crate conrod;
 #[macro_use]
@@ -49,6 +53,8 @@ fn main()
                 _ => (),
             }
         }
+
+        last_update = std::time::Instant::now();
     }
 
     if false {

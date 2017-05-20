@@ -292,7 +292,7 @@ impl<'a> PortManager<'a> {
         // assert cannot allocate or resize
         self.ports[p.id] = val;
 
-        for &(p1, p2) in self.connections.iter() {
+        for &(p1, p2) in &self.connections {
             if p1 == p.id {
                 self.ports[p2] = val;
             }
@@ -357,7 +357,7 @@ impl<'a> PortManager<'a> {
         self.ports_meta
             .get(component)
             .and_then(|comp| comp.get(port_name))
-            .map(|port_name| port_name.clone())
+            .cloned()
     }
 
     pub fn find_ports(&self, component: &str) -> Option<Vec<UnknownPortHandle<'a>>>
@@ -368,7 +368,7 @@ impl<'a> PortManager<'a> {
             .map(|comp| {
                 let mut res = Vec::new(); // TODO I can't be doing this!
                 for handle in comp.values() {
-                    res.push(handle.clone())
+                    res.push(*handle)
                 }
 
                 res
@@ -380,7 +380,7 @@ impl<'a> PortManager<'a> {
     {
         // not realtime safe
         let mut v = Vec::new();
-        for &(o, i) in self.connections.iter() {
+        for &(o, i) in &self.connections {
             let e = (OutputPortHandle {
                          id: o,
                          phantom: PhantomData,
@@ -399,8 +399,8 @@ impl<'a> PortManager<'a> {
     pub fn get_component<P: PortHandle>(&self, p: P) -> Option<String>
     {
         // probably realtime safe but super slow
-        for (component, ports) in self.ports_meta.iter() {
-            for (port, handle) in ports.iter() {
+        for (component, ports) in &self.ports_meta {
+            for (_, handle) in ports.iter() {
                 if handle.id() == p.id() {
                     return Some(component.clone());
                 }

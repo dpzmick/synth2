@@ -25,6 +25,7 @@ impl<'a> Component<'a> for SquareWaveOscillator<'a> {
     fn generate(&mut self, ports: &mut PortManager)
     {
         // find the sine out port
+        // TODO refactor
         let mut out = None;
         match ports.find_ports(&self.name) {
             Some(ports) => {

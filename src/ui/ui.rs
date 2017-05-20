@@ -1,16 +1,13 @@
 use conrod;
-use conrod::Positionable;
 use conrod::Sizeable;
 use conrod::Widget;
 use conrod::backend::glium::glium;
 use conrod::backend::glium::glium::DisplayBuild;
 use conrod::backend::glium::glium::Surface;
 use conrod::glium::backend::glutin_backend::GlutinFacade;
-// use conrod::glium::glutin::Event;
 use conrod::widget::Line;
 
 use std::collections::HashMap;
-use std::collections::HashSet;
 use ui::drag_rect;
 
 use voice::Voice;
@@ -64,7 +61,7 @@ impl<'a> LogicalUi<'a> {
             let state: &mut drag_rect::HiddenState =
                 self.states
                     .entry(comp.clone())
-                    .or_insert(drag_rect::DragRect::make_state([0.0, 0.0]));
+                    .or_insert_with(|| drag_rect::DragRect::make_state([0.0, 0.0]));
 
             // the rects move themselves around
             drag_rect::DragRect::new(comp.clone(), state)
@@ -146,9 +143,8 @@ impl<'a> SynthUi<'a> {
                 self.ui_needs_update = true;
             }
 
-            match event {
-                glium::glutin::Event::Closed => return vec![UiEvent::Exit],
-                _ => {},
+            if let glium::glutin::Event::Closed = event {
+                return vec![UiEvent::Exit];
             }
         }
 

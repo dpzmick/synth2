@@ -1,7 +1,6 @@
 use conrod;
 use conrod::Colorable;
 use conrod::Positionable;
-use conrod::backend::glium::glium::{DisplayBuild, Surface};
 
 /// Use this in this one place
 pub struct HiddenState {
@@ -10,9 +9,9 @@ pub struct HiddenState {
 
 widget_style! {
     style Style {
-        - color: conrod::Color { theme.shape_color }
-        - border: conrod::Scalar { theme.border_width }
-        - border_color: conrod::Color { theme.border_color }
+        // - color: conrod::Color { theme.shape_color }
+        // - border: conrod::Scalar { theme.border_width }
+        // - border_color: conrod::Color { theme.border_color }
     }
 }
 
@@ -83,7 +82,7 @@ impl<'a> conrod::Widget for DragRect<'a> {
 
     fn style(&self) -> Self::Style
     {
-        self.style.clone()
+        self.style
     }
 
     fn update(mut self, args: conrod::widget::UpdateArgs<Self>) -> Self::Event
@@ -97,7 +96,6 @@ impl<'a> conrod::Widget for DragRect<'a> {
         let shared_state: &mut HiddenState = self.state;
         let conrod::widget::UpdateArgs {
             id,
-            style,
             rect,
             state,
             ui,

@@ -68,7 +68,7 @@ impl<'a> Voice<'a> {
         // TODO fix this up, do a sort
         self.components.push(Box::new(comp));
         let s = self.components.len();
-        let ref mut comp = self.components[s - 1];
+        let comp = &mut self.components[s - 1];
         comp.initialize_ports(&mut self.ports);
     }
 
@@ -76,8 +76,8 @@ impl<'a> Voice<'a> {
     pub fn generate(&mut self) -> f32
     {
         // TODO realtime safe
-        for component in self.components.iter_mut() {
-            component.generate(&mut self.ports);
+        for comp in &mut self.components {
+            comp.generate(&mut self.ports);
         }
 
         // get the value on the output wire
@@ -90,7 +90,7 @@ impl<'a> Voice<'a> {
         // TODO return an iterator
         let mut ret = Vec::new();
 
-        for comp in self.components.iter() {
+        for comp in &self.components {
             ret.push(comp.get_name())
         }
 
@@ -151,7 +151,7 @@ impl<'a> Voice<'a> {
             (("envelope", "samples_out"), ("voice", "samples_in")),
         ];
 
-        for &(p1, p2) in pairs.iter() {
+        for &(p1, p2) in &pairs {
             println!("connecting {:?} to {:?}", p1, p2);
             self.ports.connect_by_name(p1, p2).unwrap();
         }

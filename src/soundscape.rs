@@ -23,14 +23,14 @@ impl<'a> Soundscape<'a> {
 
     pub fn example_connections(&mut self)
     {
-        for voice in self.voices.iter_mut() {
+        for voice in &mut self.voices {
             voice.example_connections()
         }
     }
 
     pub fn note_on(&mut self, freq: f32, vel: f32)
     {
-        for voice in self.voices.iter_mut() {
+        for voice in &mut self.voices {
             match voice.current_frequency() {
                 Some(_f) => (),
                 None => {
@@ -45,14 +45,11 @@ impl<'a> Soundscape<'a> {
 
     pub fn note_off(&mut self, freq: f32)
     {
-        for voice in self.voices.iter_mut() {
-            match voice.current_frequency() {
-                Some(f) => {
-                    if freq == f {
-                        voice.note_off(f)
-                    }
-                },
-                None => (),
+        for voice in &mut self.voices {
+            if let Some(f) = voice.current_frequency() {
+                if f == freq {
+                    voice.note_off(f)
+                }
             }
         }
     }
@@ -60,7 +57,7 @@ impl<'a> Soundscape<'a> {
     pub fn generate(&mut self) -> f32
     {
         let mut sample = 0.0;
-        for voice in self.voices.iter_mut() {
+        for voice in &mut self.voices {
             let subsample = voice.generate();
             sample += subsample;
         }
