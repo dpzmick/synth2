@@ -1,6 +1,7 @@
 use components::Component;
 use ports::{InputPortHandle, OutputPortHandle, PortManager};
 
+#[derive(Debug)]
 pub struct OnOff<'a> {
     name: String,
     samples_in: Option<InputPortHandle<'a>>,

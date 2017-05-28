@@ -3,6 +3,7 @@ use ports::{InputPortHandle, OutputPortHandle, PortManager};
 
 // has many inputs and combines them proportionally to how many are emitting a
 // signal
+#[derive(Debug)]
 pub struct CombineInputs<'a> {
     name: String,
     num_inputs: usize, // needed when initializing ports

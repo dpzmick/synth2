@@ -1,6 +1,7 @@
 use components::{Component, SineWaveOscillator};
 use ports::PortManager;
 
+#[derive(Debug)]
 pub struct SquareWaveOscillator<'a> {
     name: String,
     sine: SineWaveOscillator<'a>,

@@ -8,13 +8,11 @@ clippy = {version = "*", optional = true} # what a mess
 easyjack = "0.1.2"
 enum_primitive = "0.1.1"
 time = "0.1"
+ketos = "0.9"
+ketos_derive = "0.1.0"
 
 [features]
 default = []
-
-[dependencies.conrod]
-git = "https://github.com/PistonDevelopers/conrod.git"
-features = ["glium", "winit"]
 
 [profile.release]
 debug = true

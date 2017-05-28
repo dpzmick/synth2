@@ -1,6 +1,8 @@
 use ports::PortManager;
 
-pub trait Component<'a> {
+use std::fmt;
+
+pub trait Component<'a>: fmt::Debug {
     // audio generation
     fn generate(&mut self, ports: &mut PortManager);
     fn initialize_ports(&mut self, ports: &mut PortManager<'a>);

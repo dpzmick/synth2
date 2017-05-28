@@ -1,11 +1,25 @@
 use components::Component;
 use ports::{InputPortHandle, OutputPortHandle, PortManager};
 
+use std::fmt;
+
 pub struct Math<'a> {
     name: String,
     math_function: Box<Fn(f32) -> f32>,
     input: Option<InputPortHandle<'a>>,
     output: Option<OutputPortHandle<'a>>,
+}
+
+impl<'a> fmt::Debug for Math<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error>
+    {
+        write!(f,
+               "Math {{ name: {:?}, function: [[opaque]], input: {:?}, output: {:?} }}",
+               self.name,
+               self.input,
+               self.output);
+        Ok(())
+    }
 }
 
 impl<'a> Math<'a> {

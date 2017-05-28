@@ -2,6 +2,7 @@ use components::Component;
 use ports::{InputPortHandle, OutputPortHandle, PortManager};
 
 /// A single instance of the graph
+#[derive(Debug)]
 pub struct Voice<'a> {
     components: Vec<Box<Component<'a> + 'a>>,
     ports: PortManager<'a>,

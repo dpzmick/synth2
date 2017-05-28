@@ -8,6 +8,7 @@ use ports::{InputPortHandle, OutputPortHandle, PortManager};
 
 use std::f32;
 
+#[derive(Debug)]
 pub struct SineWaveOscillator<'a> {
     name: String,
     phase: f32,
