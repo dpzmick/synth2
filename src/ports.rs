@@ -139,7 +139,7 @@ pub enum PortManagerError {
     PortsNotUnique,
     NotOutputPort,
     NotInputPort,
-    NoSuchPort,
+    NoSuchPort(String /* comp */, String /* port */),
 }
 
 /// A port manager manages the connections between different components
@@ -151,6 +151,7 @@ pub enum PortManagerError {
 /// An input may only have a single incoming connection, but, an output port
 /// may be connected to
 /// many outputs
+#[derive(Debug)]
 pub struct PortManager<'a> {
     // (very poor) graph implementation
     ports: Vec<f32>,
@@ -210,7 +211,6 @@ impl<'a> PortManager<'a> {
         direction: PortDirection,
     ) -> Result<usize, PortManagerError>
     {
-        // TODO not realtime safe
         if !self.check_key_usable(&component, &port_name) {
             return Err(PortManagerError::PortsNotUnique);
         }
@@ -336,11 +336,11 @@ impl<'a> PortManager<'a> {
     {
         // lookup both of the ports that are requested
         self.find_port(p1.0, p1.1)
-            .ok_or(PortManagerError::NoSuchPort)
+            .ok_or(PortManagerError::NoSuchPort(p1.0.to_owned(), p1.1.to_owned()))
             .and_then(|port| port.promote_to_output())
             .and_then(|output| {
                 self.find_port(p2.0, p2.1)
-                    .ok_or(PortManagerError::NoSuchPort)
+                    .ok_or(PortManagerError::NoSuchPort(p2.0.to_owned(), p2.1.to_owned()))
                     .and_then(|port| port.promote_to_input())
                     .map(|input| (output, input))
             })
@@ -351,12 +351,16 @@ impl<'a> PortManager<'a> {
             })
     }
 
-    pub fn find_port(&self, component: &str, port_name: &str) -> Option<UnknownPortHandle<'a>>
+    pub fn find_port<S1: Into<String>, S2: Into<String>>(
+        &self,
+        component: S1,
+        port_name: S2,
+    ) -> Option<UnknownPortHandle<'a>>
     {
         // must be realtime safe
         self.ports_meta
-            .get(component)
-            .and_then(|comp| comp.get(port_name))
+            .get(&component.into())
+            .and_then(|comp| comp.get(&port_name.into()))
             .cloned()
     }
 
@@ -612,7 +616,8 @@ fn test_connect_by_name_fail1()
         .unwrap();
 
     let connected = manager.connect_by_name(("test", "out"), ("test", "dne"));
-    assert!(connected.unwrap_err() == PortManagerError::NoSuchPort);
+    assert!(connected.unwrap_err() ==
+            PortManagerError::NoSuchPort("test".to_owned(), "dne".to_owned()));
 }
 
 #[test]

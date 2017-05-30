@@ -101,16 +101,14 @@ impl<'a> Voice<'a> {
         ret
     }
 
-    // TODO actually retrurn connections by ports
-    pub fn get_connections(&self) -> Vec<(String, String)>
+    pub fn get_port_manager(&self) -> &PortManager<'a>
     {
-        let mut v = Vec::new();
-        for (o, i) in self.ports.get_connections() {
-            let e = (self.ports.get_component(o).unwrap(), self.ports.get_component(i).unwrap());
-            v.push(e);
-        }
+        return &self.ports;
+    }
 
-        v
+    pub fn get_port_manager_mut(&mut self) -> &mut PortManager<'a>
+    {
+        return &mut self.ports;
     }
 
     pub fn example_connections(&mut self)
