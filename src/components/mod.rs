@@ -11,5 +11,18 @@ mod square;
 pub use self::combine::CombineInputs;
 pub use self::math::Math;
 pub use self::onoff::OnOff;
-pub use self::sine::SineWaveOscillator;
-pub use self::square::SquareWaveOscillator;
+pub use self::sine::{SineWaveOscillator, SineWaveOscillatorConfig};
+pub use self::square::{SquareWaveOscillator, SquareWaveOscillatorConfig};
+
+// macro_rules! all_components {
+//     () => (
+//         {
+//             SineWaveOscillatorConfig,
+//             SquareWaveOscillatorConfig
+//         }
+//     )
+// }
+
+// pub fn test() {
+//     make_valid!( type all_components!{} );
+// }

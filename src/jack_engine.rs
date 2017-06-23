@@ -1,5 +1,3 @@
-
-
 use jack;
 
 use midi::{MidiMessage, MidiStatus};

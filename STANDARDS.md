@@ -1,2 +1,4 @@
 - local imports come before system imports
 - local imports in alphabetical order
+- try to prefix external packages with their "namespace" when reasonable
+    - local imports are fine, but try to keep it clear in top level declarations

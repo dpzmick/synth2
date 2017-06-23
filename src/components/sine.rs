@@ -1,13 +1,26 @@
-
-
 // TODO FIX THIS!
 
 use SRATE;
-use components::Component;
+
+use components::{Component, ComponentConfig};
 use ports::{InputPortHandle, OutputPortHandle, PortManager};
 
+use std::collections::HashMap;
 use std::f32;
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SineWaveOscillatorConfig {
+    pub name: String,
+}
+
+impl ComponentConfig for SineWaveOscillatorConfig {
+    fn build_component<'a, 'b>(&'b self) -> Box<Component<'a> + 'a>
+    {
+        Box::new(SineWaveOscillator::new(self.name.clone()))
+    }
+}
+
+#[derive(Debug)]
 pub struct SineWaveOscillator<'a> {
     name: String,
     phase: f32,
@@ -28,7 +41,7 @@ impl<'a> SineWaveOscillator<'a> {
 
     fn sine(&self, t: f32) -> f32
     {
-        assert!(t >= 0.0 && t <= 1.0);
+        debug_assert!(t >= 0.0 && t <= 1.0);
         (2.0 * t * f32::consts::PI).sin()
     }
 }
@@ -39,12 +52,12 @@ impl<'a> Component<'a> for SineWaveOscillator<'a> {
         // TODO error handling?
 
         self.frequency_port = Some(ports
-                                       .register_input_port(self.name.clone(),
+                                       .register_input_port(self.get_name(),
                                                             "frequency_in".to_string())
                                        .unwrap());
 
         self.output_port = Some(ports
-                                    .register_output_port(self.name.clone(),
+                                    .register_output_port(self.get_name(),
                                                           "samples_out".to_string())
                                     .unwrap());
     }

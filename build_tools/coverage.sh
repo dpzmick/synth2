@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 
 if [[ -z "$TRAVIS_JOB_ID" ]]; then
     echo "Cannot run without TRAVIS_JOB_ID in the environment"
@@ -31,11 +32,15 @@ RUSTFLAGS='-C link-dead-code' cargo test --no-run
 echo "attempting to run code coverage utility"
 ls target/debug/$project-*
 
+# get a list of files which we actually want to include in the coverage report
+# apparently cargo generates a make-style ".d" file which we can possibly use
+files=$(cat target/debug/synth.d | cut -f2 -d':' | tail -c +2 | sed -s 's/ /,/g')
+
 for exe in $(ls target/debug/$project-*);
 do
     # sometimes files ending in ".d" end up in the output directory, skip them
     if ! [[ -x $exe ]]; then continue; fi
 
     echo "executing $exe with kcov"
-    kcov --exclude-pattern=/.cargo,/usr/lib,/usr/include/ --verify target/cov --coveralls-id=$TRAVIS_JOB_ID $exe
+    kcov --include-pattern=$files --verify target/cov --coveralls-id=$TRAVIS_JOB_ID $exe
 done
