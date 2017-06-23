@@ -62,12 +62,12 @@ impl<'a> Voice<'a> {
         }
     }
 
-    pub fn add_component<T: Component<'a> + 'a>(&mut self, comp: T)
+    pub fn add_component(&mut self, comp: Box<Component<'a> + 'a>)
     {
         // TODO ensure name unique
         // TODO NOT realtime safe
         // TODO fix this up, do a sort
-        self.components.push(Box::new(comp));
+        self.components.push(comp);
         let s = self.components.len();
         let comp = &mut self.components[s - 1];
         comp.initialize_ports(&mut self.ports);
@@ -115,44 +115,44 @@ impl<'a> Voice<'a> {
     {
         use components::{CombineInputs, Math, OnOff, SineWaveOscillator, SquareWaveOscillator};
 
-        // creates two harmonics
-        // midi input goes through here to get second harmonic
-        self.add_component(Math::new("math".to_string(), |x| x * 2.0));
-        self.add_component(SquareWaveOscillator::new("harmonic_osc".to_string()));
+        // // creates two harmonics
+        // // midi input goes through here to get second harmonic
+        // self.add_component(Math::new("math".to_string(), |x| x * 2.0));
+        // self.add_component(SquareWaveOscillator::new("harmonic_osc".to_string()));
 
-        // midi input also sent through here
-        self.add_component(SineWaveOscillator::new("base_osc".to_string()));
+        // // midi input also sent through here
+        // self.add_component(SineWaveOscillator::new("base_osc".to_string()));
 
-        // create an input combiner with 2 inputs
-        self.add_component(CombineInputs::new("combine".to_string(), 2));
+        // // create an input combiner with 2 inputs
+        // self.add_component(CombineInputs::new("combine".to_string(), 2));
 
-        // finally, gate is sent through the OnOff
-        self.add_component(OnOff::new("envelope".to_string()));
+        // // finally, gate is sent through the OnOff
+        // self.add_component(OnOff::new("envelope".to_string()));
 
-        // connect things
-        let pairs = [
-            // push midi frequency the right places
-            (("voice", "midi_frequency_out"), ("base_osc", "frequency_in")),
-            (("voice", "midi_frequency_out"), ("math", "input")),
+        // // connect things
+        // let pairs = [
+        //     // push midi frequency the right places
+        //     (("voice", "midi_frequency_out"), ("base_osc", "frequency_in")),
+        //     (("voice", "midi_frequency_out"), ("math", "input")),
 
-            // finish up the connections for math
-            (("math", "output"), ("harmonic_osc", "frequency_in")),
+        //     // finish up the connections for math
+        //     (("math", "output"), ("harmonic_osc", "frequency_in")),
 
-            // connect the oscillators to the combiner
-            (("base_osc", "samples_out"), ("combine", "combine_input0")),
-            (("harmonic_osc", "samples_out"), ("combine", "combine_input1")),
+        //     // connect the oscillators to the combiner
+        //     (("base_osc", "samples_out"), ("combine", "combine_input0")),
+        //     (("harmonic_osc", "samples_out"), ("combine", "combine_input1")),
 
-            // set up the envelope
-            (("voice", "midi_gate_out"), ("envelope", "gate_in")),
-            (("combine", "out"), ("envelope", "samples_in")),
+        //     // set up the envelope
+        //     (("voice", "midi_gate_out"), ("envelope", "gate_in")),
+        //     (("combine", "out"), ("envelope", "samples_in")),
 
-            // send audio back to the card
-            (("envelope", "samples_out"), ("voice", "samples_in")),
-        ];
+        //     // send audio back to the card
+        //     (("envelope", "samples_out"), ("voice", "samples_in")),
+        // ];
 
-        for &(p1, p2) in &pairs {
-            println!("connecting {:?} to {:?}", p1, p2);
-            self.ports.connect_by_name(p1, p2).unwrap();
-        }
+        // for &(p1, p2) in &pairs {
+        //     println!("connecting {:?} to {:?}", p1, p2);
+        //     self.ports.connect_by_name(p1, p2).unwrap();
+        // }
     }
 }

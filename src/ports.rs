@@ -134,6 +134,12 @@ impl<'a, T: PortHandle> PartialEq<T> for OutputPortHandle<'a> {
     }
 }
 
+// TODO
+// pub struct PortPair {
+//     component: String,
+//     port: String,
+// }
+
 #[derive(PartialEq, Debug)]
 pub enum PortManagerError {
     PortsNotUnique,
@@ -142,15 +148,15 @@ pub enum PortManagerError {
     NoSuchPort(String /* comp */, String /* port */),
 }
 
-/// A port manager manages the connections between different components
-/// Every component can register a variety of input and output ports with the
-/// port manager.
-/// When two ports are connected, any values written to the "Input" end of the
-/// port will also be
-/// written to the "Output" end
-/// An input may only have a single incoming connection, but, an output port
-/// may be connected to
-/// many outputs
+/// A port manager manages the connections between different components Every
+/// component can
+/// register a variety of input and output ports with the port manager.  When
+/// two ports are
+/// connected, any values written to the "Input" end of the port will also be
+/// written to the
+/// "Output" end An input may only have a single incoming connection, but, an
+/// output port may be
+/// connected to many outputs
 #[derive(Debug)]
 pub struct PortManager<'a> {
     // (very poor) graph implementation

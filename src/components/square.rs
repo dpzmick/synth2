@@ -1,5 +1,17 @@
-use components::{Component, SineWaveOscillator};
+use components::{Component, ComponentConfig, SineWaveOscillator};
 use ports::PortManager;
+
+#[derive(Debug, StructValue, Clone, ForeignValue, FromValueClone)]
+pub struct SquareWaveOscillatorConfig {
+    pub name: String,
+}
+
+impl ComponentConfig for SquareWaveOscillatorConfig {
+    fn build_component<'a, 'b>(&'b self) -> Box<Component<'a> + 'a>
+    {
+        Box::new(SquareWaveOscillator::new(self.name.clone()))
+    }
+}
 
 #[derive(Debug)]
 pub struct SquareWaveOscillator<'a> {

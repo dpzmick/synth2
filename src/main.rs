@@ -2,6 +2,14 @@
 #![cfg_attr(feature="clippy", feature(plugin))]
 #![cfg_attr(feature="clippy", plugin(clippy))]
 
+#![feature(conservative_impl_trait)]
+// #![feature(trace_macros)]
+// trace_macros!(true);
+
+extern crate serde;
+#[macro_use]
+extern crate serde_derive;
+
 #[macro_use]
 extern crate enum_primitive;
 extern crate easyjack as jack;
