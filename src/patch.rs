@@ -1,13 +1,9 @@
 // try to keep all of the code needed to manage the entire ketos runtime contained to this file, if
 // possible
-//
-// TODO this file is a disaster
 
 use components::Component;
 use components::ComponentConfig;
-use components::ComponentConfigMaker;
-use components::SineWaveOscillatorConfig;
-use components::SquareWaveOscillatorConfig;
+
 use ketos;
 use ketos::ForeignValue;
 use ketos::FromValue;
@@ -18,7 +14,7 @@ use serde;
 use std::cell::RefCell;
 use std::marker::PhantomData;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use voice::Voice;
@@ -30,19 +26,52 @@ struct CachePair {
     second: (String, String),
 }
 
+type Decoder<T> = Box<Fn(&T) -> Result<Box<ComponentConfig>, String>>;
+
 struct KetosConfigInput<'a> {
     value: &'a ketos::Value,
 }
 
-impl<'a> ComponentConfigMaker for KetosConfigInput<'a> {
-    fn make_decoder<T: ComponentConfig + ketos::FromValue + 'static>(&self)
-        -> Box<Fn(&Self) -> Result<Box<ComponentConfig>, String>>
+impl<'a> KetosConfigInput<'a> {
+    /// Create a decoder for a specific type
+    fn make_decoder<T: ComponentConfig + ketos::FromValue + 'static>(&self) -> Decoder<Self>
     {
         Box::new(|this: &KetosConfigInput| {
             T::from_value(this.value.clone())
                 .map(|v| Box::new(v) as Box<ComponentConfig>)
                 .map_err(|_| "Component not a valid type".to_owned())
         })
+    }
+
+    fn get_all_decoders(&self) -> Vec<Decoder<Self>>
+    {
+        use components::{SineWaveOscillatorConfig, SquareWaveOscillatorConfig};
+        
+        let mut decoders = Vec::new();
+        decoders.push(self.make_decoder::<SquareWaveOscillatorConfig>());
+
+        decoders
+    }
+
+    pub fn register_all_decoders(scope: &ketos::Scope)
+    {
+        use components::{SineWaveOscillatorConfig, SquareWaveOscillatorConfig};
+
+        scope.register_struct_value::<SquareWaveOscillatorConfig>();
+    }
+
+    /// Attempts to build a component config from some underlying config format
+    /// Will iterate through every available decoder looking for the first one
+    /// that works
+    pub fn parse(&self) -> Result<Box<ComponentConfig>, String>
+    {
+        for decoder in self.get_all_decoders().into_iter() {
+            if let Ok(config) = decoder(self) {
+                return Ok(config);
+            }
+        }
+
+        Err("NONE FOUND".to_owned())
     }
 }
 
@@ -78,7 +107,7 @@ pub struct Patch {}
 
 // public impl
 impl Patch {
-    pub fn from_file<'a>() -> Voice<'a>
+    pub fn from_file<'a>(path: &Path) -> Voice<'a>
     {
         let cache = Rc::new(Config {
                                  connections: RefCell::new(Vec::new()),
@@ -89,10 +118,8 @@ impl Patch {
             PathBuf::from("/home/dpzmick/.cargo/registry/src/github.com-1ecc6299db9ec823/ketos-0.9.0/lib"),
         ]);
 
-        // TODO read a real file
         let interp = ketos::Interpreter::with_loader(Box::new(ketos::BuiltinModuleLoader
                                                                   .chain(loader)));
-
         ketos_fn!{
             interp.scope()
             => "connect"
@@ -124,22 +151,25 @@ impl Patch {
             })
         });
 
-        // fucking hell
-        interp.scope().register_struct_value::<SquareWaveOscillatorConfig>();
+        KetosConfigInput::register_all_decoders(interp.scope());
 
-        interp
-            .run_code(r#"
-                (define (create config)
-                    ; add components
-                    (add-component config
-                       (new SquareWaveOscillatorConfig :name "square"))
+        match interp.run_file(path){
+            Ok(()) => (),
+            Err(error) => {
+                println!("error occured: {:?}", error);
+                panic!("gtfo");
+            }
+        }
 
-                    ; connect components
-                    (connect config '("square" "samples_out") '("voice" "samples_in")))
-                "#, None)
-            .unwrap();
+        let result = interp.call("create", vec![ketos::Value::Foreign(cache.clone())]);
 
-        let result = interp.call("create", vec![ketos::Value::Foreign(cache.clone())]).unwrap();
+        let result = match result {
+            Ok(result) => result,
+            Err(error) => {
+                println!("error occured: {:?}", error);
+                panic!("gtfo");
+            }
+        };
 
         // connect everything using the contents of the script
         let mut voice = Voice::new();
@@ -150,10 +180,7 @@ impl Patch {
 
         {
             let ports = voice.get_port_manager_mut();
-
             for connection in cache.connections.borrow().iter() {
-                println!("connection: {:?}", connection);
-
                 if let Err(err) = ports.connect_by_name((&connection.first.0,
                                                          &connection.first.1),
                                                         (&connection.second.0,
