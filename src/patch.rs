@@ -1,15 +1,15 @@
-// try to keep all of the code needed to manage the entire ketos runtime contained to this file, if
-// possible
+// try to keep all of the code needed to manage the entire ketos runtime
+// contained to this file, if possible
 
 use components::Component;
 use components::ComponentConfig;
-use ports::PortName;
 
 use ketos;
 use ketos::ForeignValue;
 use ketos::FromValue;
 use ketos::FromValueRef;
 use ketos::ModuleLoader;
+use ports::PortName;
 
 use serde;
 use std::cell::RefCell;
@@ -28,7 +28,8 @@ struct KetosConfigInput<'a> {
 
 impl<'a> KetosConfigInput<'a> {
     /// Create a decoder for a specific type
-    fn make_decoder<T: ComponentConfig + ketos::FromValue + 'static>(&self) -> Decoder<Self>
+    fn make_decoder<T: ComponentConfig + ketos::FromValue + 'static>(&self)
+        -> Decoder<Self>
     {
         Box::new(|this: &KetosConfigInput| {
             T::from_value(this.value.clone())
@@ -78,8 +79,10 @@ struct Config {
     pub components: RefCell<Vec<Box<ComponentConfig>>>,
 }
 
-// all the methods need to be available at global scope so might as well not put them on the struct
-fn connect(config: &Config, first: (&str, &str), second: (&str, &str)) -> Result<(), ketos::Error>
+// all the methods need to be available at global scope so might as well not put
+// them on the struct
+fn connect(config: &Config, first: (&str, &str), second: (&str, &str))
+    -> Result<(), ketos::Error>
 {
     let p = Connection {
         first: PortName::new(first.0, first.1),
@@ -90,7 +93,8 @@ fn connect(config: &Config, first: (&str, &str), second: (&str, &str)) -> Result
     Ok(())
 }
 
-fn add_component(config: &Config, comp: Box<ComponentConfig>) -> Result<(), ketos::Error>
+fn add_component(config: &Config, comp: Box<ComponentConfig>)
+    -> Result<(), ketos::Error>
 {
     config.components.borrow_mut().push(comp);
     Ok(())
@@ -102,21 +106,28 @@ pub struct Patch {}
 impl Patch {
     pub fn from_file<'a>(path: &Path) -> Voice<'a>
     {
-        let cache = Rc::new(Config {
-                                connections: RefCell::new(Vec::new()),
-                                components: RefCell::new(Vec::new()),
-                            });
+        let cache = Rc::new(
+            Config {
+                connections: RefCell::new(Vec::new()),
+                components: RefCell::new(Vec::new()),
+            }
+        );
 
         let loader = ketos::FileModuleLoader::with_search_paths(vec![
-            PathBuf::from("/home/dpzmick/.cargo/registry/src/github.com-1ecc6299db9ec823/ketos-0.9.0/lib"),
+                PathBuf::from("/home/dpzmick/.cargo/registry/src/github.com-1ecc6299db9ec823/ketos-0.9.0/lib"),
         ]);
 
-        let interp = ketos::Interpreter::with_loader(Box::new(ketos::BuiltinModuleLoader
-                                                                  .chain(loader)));
+        let interp = ketos::Interpreter::with_loader(
+            Box::new(ketos::BuiltinModuleLoader.chain(loader)));
+
         ketos_fn!{
             interp.scope()
             => "connect"
-            => fn connect(cache: &Config, first: (&str, &str), second: (&str, &str)) -> ()
+            => fn connect(
+                cache: &Config,
+                first: (&str, &str),
+                second: (&str, &str))
+            -> ()
         }
 
         interp.scope().add_value_with_name("add-component", |name| {
@@ -133,7 +144,8 @@ impl Patch {
                 let mut iter = (&*args).iter();
 
                 let value = iter.next().unwrap();
-                let cache = try!(<&Config as ketos::value::FromValueRef>::from_value_ref(value));
+                let cache = try!(
+                    <&Config as ketos::value::FromValueRef>::from_value_ref(value));
 
                 let value = iter.next().unwrap();
                 let kval = KetosConfigInput { value };
@@ -154,7 +166,8 @@ impl Patch {
             },
         }
 
-        let result = interp.call("create", vec![ketos::Value::Foreign(cache.clone())]);
+        let result = interp.call(
+            "create", vec![ketos::Value::Foreign(cache.clone())]);
 
         let result = match result {
             Ok(result) => result,
@@ -174,7 +187,9 @@ impl Patch {
         {
             let ports = voice.get_port_manager_mut();
             for connection in cache.connections.borrow().iter() {
-                if let Err(err) = ports.connect_by_name(&connection.first, &connection.second) {
+                let res = ports.connect_by_name(
+                    &connection.first, &connection.second);
+                if let Err(err) = res {
                     println!("error occurred: {:?}", err);
                 }
             }

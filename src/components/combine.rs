@@ -29,13 +29,14 @@ impl<'a> Component<'a> for CombineInputs<'a> {
     {
         for i in 0..self.num_inputs {
             let iname = format!("{}_input{}", self.name, i);
-            let i = ports.register_input_port(&PortName::new(&self.name, iname));
+            let i = ports.register_input_port(
+                &PortName::new(&self.name, iname));
+
             self.inputs.push(i.unwrap());
         }
 
-        self.output = Some(ports
-                               .register_output_port(&PortName::new(&self.name, "out"))
-                               .unwrap());
+        self.output = Some(ports.register_output_port(
+                &PortName::new(&self.name, "out")) .unwrap());
     }
 
     fn generate(&mut self, ports: &mut RealtimePortManager)

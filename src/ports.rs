@@ -45,27 +45,29 @@ impl<'a> PortHandle for UnknownPortHandle<'a> {
 }
 
 impl<'a> UnknownPortHandle<'a> {
-    pub fn promote_to_output(self) -> Result<OutputPortHandle<'a>, PortManagerError>
+    pub fn promote_to_output(self)
+        -> Result<OutputPortHandle<'a>, PortManagerError>
     {
         match self.dir {
             PortDirection::Output => {
                 Ok(OutputPortHandle {
-                       id: self.id,
-                       phantom: PhantomData,
-                   })
+                    id: self.id,
+                    phantom: PhantomData,
+                })
             },
             PortDirection::Input => Err(PortManagerError::NotOutputPort),
         }
     }
 
-    pub fn promote_to_input(self) -> Result<InputPortHandle<'a>, PortManagerError>
+    pub fn promote_to_input(self)
+        -> Result<InputPortHandle<'a>, PortManagerError>
     {
         match self.dir {
             PortDirection::Input => {
                 Ok(InputPortHandle {
-                       id: self.id,
-                       phantom: PhantomData,
-                   })
+                    id: self.id,
+                    phantom: PhantomData,
+                })
             },
             PortDirection::Output => Err(PortManagerError::NotInputPort),
         }
@@ -79,7 +81,6 @@ impl<'a, T: PortHandle> PartialEq<T> for UnknownPortHandle<'a> {
     }
 }
 
-// TODO could implement `set` on the handle
 #[derive(Clone, Copy, Debug)]
 pub struct InputPortHandle<'a> {
     id: PortId,
@@ -120,6 +121,7 @@ impl<'a> PortHandle for OutputPortHandle<'a> {
     {
         self.id
     }
+
     fn direction(&self) -> PortDirection
     {
         PortDirection::Output
@@ -159,24 +161,27 @@ pub enum PortManagerError {
     NoSuchPort(PortName),
 }
 
-/// A RealtimePortManager can only access the portions of a PortManager that are safe to use in a
-/// realtime context
+/// A RealtimePortManager can only access the portions of a PortManager that are
+/// safe to use in a realtime context
 pub trait RealtimePortManager<'a> {
-    /// Get the current value of the port. If the port handle was registered with this
-    /// PortManager, this will never fail because ports cannot be destroyed. Calling this function
-    /// with a handle to a port from a different PortManager is undefined behavior.
+    /// Get the current value of the port. If the port handle was registered
+    /// with this PortManager, this will never fail because ports cannot be
+    /// destroyed. Calling this function with a handle to a port from a
+    /// different PortManager is undefined behavior.
     fn get_port_value(&self, p: &PortHandle) -> f32;
 
-    /// Set the current value of the port. Calling this function with a handle to a port from a
-    /// different PortManager is undefined behavior. This may only be called on an Output port
+    /// Set the current value of the port. Calling this function with a handle
+    /// to a port from a different PortManager is undefined behavior. This may
+    /// only be called on an Output port
     fn set_port_value(&mut self, p: &OutputPortHandle, val: f32);
 }
 
-/// A port manager manages the connections between different components Every component can
-/// register a variety of input and output ports with the port manager.  When two ports are
-/// connected, any values written to the "Input" end of the port will also be written to the
-/// "Output" end An input may only have a single incoming connection, but, an output port may be
-/// connected to many outputs
+/// A port manager manages the connections between different components. Every
+/// component can register a variety of input and output ports with the port
+/// manager. When two ports are connected, any values written to the "Input" end
+/// of the port will also be written to the "Output" end An input may only have
+/// a single incoming connection, but, an output port may be connected to many
+/// outputs
 pub trait PortManager<'a>: RealtimePortManager<'a> {
     fn register_input_port(&mut self, name: &PortName)
         -> Result<InputPortHandle<'a>, PortManagerError>;
@@ -185,15 +190,17 @@ pub trait PortManager<'a>: RealtimePortManager<'a> {
         -> Result<OutputPortHandle<'a>, PortManagerError>;
 
     /// Connect ports
-    /// the value on the output port will always be available on the input port Note
-    /// that this will always succeed, as long as both of the port handles are owned by this
-    /// PortManager It is impossible to request an invalid connection due to type safety.
+    /// The value on the output port will always be available on the input port.
+    /// Note that this will always succeed, as long as both of the port handles
+    /// are owned by this PortManager.
+    /// It is impossible to request an invalid connection due to type safety.
     fn connect(&mut self, p1: &OutputPortHandle, p2: &InputPortHandle);
 
     /// Disconnect ports
-    /// If two ports are already connected, this will remove the connection between them If they
-    /// are not connected, this will be a potentially expensive noop. It is impossible to request
-    /// an invalid disconnection due to type safety
+    /// If two ports are already connected, this will remove the connection
+    /// between them If they are not connected, this will be a potentially
+    /// expensive noop.
+    /// It is impossible to request an invalid disconnection due to type safety
     fn disconnect(&mut self, p1: &OutputPortHandle, p2: &InputPortHandle);
 
     fn connect_by_name(&mut self, p1: &PortName, p2: &PortName)
@@ -203,8 +210,6 @@ pub trait PortManager<'a>: RealtimePortManager<'a> {
 
     fn find_port(&self, name: &PortName) -> Option<UnknownPortHandle<'a>>;
     fn find_ports(&self, component: &str) -> Option<Vec<UnknownPortHandle<'a>>>;
-
-    fn borrow_realtime<'b>(&'b mut self) -> &'b mut RealtimePortManager<'a>;
 }
 
 #[derive(Debug)]
@@ -247,17 +252,16 @@ impl<'a> PortManagerImpl<'a> {
         direction: PortDirection,
     )
     {
-        // TODO could probably inline this and check_key_usable for more faster
         let e = self.ports_meta
             .entry(component.to_owned())
             .or_insert_with(|| HashMap::new());
 
-        e.entry(port_name.to_owned())
-            .or_insert(UnknownPortHandle {
-                           id: id,
-                           dir: direction,
-                           phantom: PhantomData,
-                       });
+        e.entry(port_name.to_owned()).or_insert(
+            UnknownPortHandle {
+                id: id,
+                dir: direction,
+                phantom: PhantomData,
+            });
     }
 
     fn new_port(
@@ -278,15 +282,14 @@ impl<'a> PortManagerImpl<'a> {
     }
 }
 
-// public impl
 impl<'a> PortManagerImpl<'a> {
     pub fn new() -> Self
     {
         Self {
-            ports: Vec::new(),
+            ports:       Vec::new(),
             connections: Vec::new(),
-            ports_meta: HashMap::new(),
-            phantom: PhantomData,
+            ports_meta:  HashMap::new(),
+            phantom:     PhantomData,
         }
     }
 }
@@ -308,14 +311,11 @@ impl<'a> RealtimePortManager<'a> for PortManagerImpl<'a> {
             }
         }
     }
-
 }
 
 impl<'a> PortManager<'a> for PortManagerImpl<'a> {
-    fn register_input_port(
-        &mut self,
-        name: &PortName,
-    ) -> Result<InputPortHandle<'a>, PortManagerError>
+    fn register_input_port(&mut self, name: &PortName)
+        -> Result<InputPortHandle<'a>, PortManagerError>
     {
         self.new_port(&name.component, &name.port, PortDirection::Input)
             .map(|id| {
@@ -345,7 +345,8 @@ impl<'a> PortManager<'a> for PortManagerImpl<'a> {
 
     fn disconnect(&mut self, p1: &OutputPortHandle, p2: &InputPortHandle)
     {
-        self.connections.retain(|&(a, b)| a != p1.id && b != p2.id);
+        self.connections
+            .retain(|&(a, b)| a != p1.id && b != p2.id);
     }
 
     fn connect_by_name(&mut self, p1: &PortName, p2: &PortName)
@@ -376,12 +377,13 @@ impl<'a> PortManager<'a> for PortManagerImpl<'a> {
             .cloned()
     }
 
-    fn find_ports(&self, component: &str) -> Option<Vec<UnknownPortHandle<'a>>>
+    fn find_ports(&self, component: &str)
+        -> Option<Vec<UnknownPortHandle<'a>>>
     {
         self.ports_meta
             .get(component)
             .map(|comp| {
-                let mut res = Vec::new(); // TODO I can't be doing this!
+                let mut res = Vec::new();
                 for handle in comp.values() {
                     res.push(*handle)
                 }
@@ -406,10 +408,6 @@ impl<'a> PortManager<'a> for PortManagerImpl<'a> {
         }
 
         v
-    }
-
-    fn borrow_realtime<'b>(&'b mut self) -> &'b mut RealtimePortManager<'a> {
-        self
     }
 }
 
@@ -541,6 +539,7 @@ fn test_find3()
     let port1 = manager
         .register_input_port(&PortName::new("test", "out1"))
         .unwrap();
+
     let port2 = manager
         .register_input_port(&PortName::new("test", "out2"))
         .unwrap();

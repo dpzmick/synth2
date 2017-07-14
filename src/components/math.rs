@@ -14,11 +14,10 @@ pub struct Math<'a> {
 impl<'a> fmt::Debug for Math<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error>
     {
-        write!(f,
-               "Math {{ name: {:?}, function: [[opaque]], input: {:?}, output: {:?} }}",
-               self.name,
-               self.input,
-               self.output);
+        write!(
+            f, "Math {{ name: {:?}, function: [[opaque]], input: {:?}, output: {:?} }}",
+            self.name, self.input, self.output);
+
         Ok(())
     }
 }
@@ -42,12 +41,9 @@ impl<'a> Math<'a> {
 impl<'a> Component<'a> for Math<'a> {
     fn initialize_ports(&mut self, ports: &mut PortManager<'a>)
     {
-        self.input = Some(ports
-                              .register_input_port(&PortName::new(&self.name, "input"))
-                              .unwrap());
-        self.output = Some(ports
-                               .register_output_port(&PortName::new(&self.name, "output"))
-                               .unwrap());
+        self.input = Some(ports.register_input_port(&PortName::new(&self.name, "input")).unwrap());
+        self.output = Some(ports.register_output_port(
+                &PortName::new(&self.name, "output")).unwrap());
     }
 
     fn generate(&mut self, ports: &mut RealtimePortManager)

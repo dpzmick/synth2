@@ -27,7 +27,8 @@ struct AudioHandler<'a> {
 }
 
 impl<'a> AudioHandler<'a> {
-    pub fn new(input: IPort, output: OPort, soundscape: Soundscape<'a>) -> Self
+    pub fn new(input: IPort, output: OPort, soundscape: Soundscape<'a>)
+        -> Self
     {
         Self {
             input,
@@ -38,7 +39,8 @@ impl<'a> AudioHandler<'a> {
 }
 
 impl<'a> jack::ProcessHandler for AudioHandler<'a> {
-    fn process(&mut self, ctx: &jack::CallbackContext, nframes: jack::NumFrames) -> i32
+    fn process(&mut self, ctx: &jack::CallbackContext, nframes: jack::NumFrames)
+        -> i32
     {
         let output_buffer = self.output.get_write_buffer(nframes, &ctx);
         let input_buffer = self.input.get_read_buffer(nframes, &ctx);

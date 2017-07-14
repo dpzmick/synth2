@@ -25,28 +25,29 @@ impl<'a> OnOff<'a> {
 impl<'a> Component<'a> for OnOff<'a> {
     fn initialize_ports(&mut self, ports: &mut PortManager<'a>)
     {
-        self.samples_in = Some(ports
-                                   .register_input_port(&PortName::new(&self.name,
-                                                                       "samples_in"))
-                                   .unwrap());
-        self.gate_in = Some(ports
-                                .register_input_port(&PortName::new(&self.name,
-                                                                    "gate_in".to_string()))
-                                .unwrap());
-        self.samples_out = Some(ports
-                                    .register_output_port(&PortName::new(&self.name,
-                                                                         "samples_out"))
-                                    .unwrap());
+        self.samples_in = Some(ports.register_input_port(
+                &PortName::new(&self.name, "samples_in")) .unwrap());
+
+        self.gate_in = Some(ports.register_input_port(
+                &PortName::new(&self.name, "gate_in")).unwrap());
+
+        self.samples_out = Some(ports.register_output_port(
+                &PortName::new(&self.name, "samples_out")).unwrap());
     }
 
     fn generate(&mut self, ports: &mut RealtimePortManager)
     {
-        if self.samples_in.is_none() || self.gate_in.is_none() || self.samples_out.is_none() {
+        if self.samples_in.is_none() || self.gate_in.is_none() ||
+           self.samples_out.is_none() {
             return;
         }
 
         let samples = ports.get_port_value(&self.samples_in.unwrap());
-        let gate = if ports.get_port_value(&self.gate_in.unwrap()) != 0.0 { 1.0 } else { 0.0 };
+        let gate = if ports.get_port_value(&self.gate_in.unwrap()) != 0.0 {
+            1.0
+        } else {
+            0.0
+        };
 
         let out = samples * gate;
         if ports.get_port_value(&self.samples_out.unwrap()) != out {

@@ -1,4 +1,5 @@
 // TODO FIX THIS!
+
 use SRATE;
 
 use components::{Component, ComponentConfig};
@@ -51,14 +52,11 @@ impl<'a> Component<'a> for SineWaveOscillator<'a> {
     {
         // TODO error handling?
 
-        self.frequency_port = Some(ports
-                                       .register_input_port(&PortName::new(self.get_name(),
-                                                                           "frequency_in"))
-                                       .unwrap());
-        self.output_port = Some(ports
-                                    .register_output_port(&PortName::new(self.get_name(),
-                                                                         "samples_out"))
-                                    .unwrap());
+        self.frequency_port = Some(ports.register_input_port(
+                &PortName::new(self.get_name(), "frequency_in")) .unwrap());
+
+        self.output_port = Some(ports.register_output_port(
+                &PortName::new(self.get_name(), "samples_out")).unwrap());
     }
 
     fn generate(&mut self, ports: &mut RealtimePortManager)

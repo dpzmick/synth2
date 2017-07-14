@@ -18,17 +18,14 @@ impl<'a> Voice<'a> {
     pub fn new() -> Self
     {
         let mut ports = PortManagerImpl::new();
-        let midi_frequency_in = ports
-            .register_output_port(&PortName::new("voice", "midi_frequency_out"))
-            .unwrap();
+        let midi_frequency_in = ports.register_output_port(
+                &PortName::new("voice", "midi_frequency_out")) .unwrap();
 
-        let midi_gate_in = ports
-            .register_output_port(&PortName::new("voice", "midi_gate_out"))
-            .unwrap();
+        let midi_gate_in = ports.register_output_port(
+            &PortName::new("voice", "midi_gate_out")) .unwrap();
 
-        let samples_out = ports
-            .register_input_port(&PortName::new("voice", "samples_in"))
-            .unwrap();
+        let samples_out = ports.register_input_port(
+            &PortName::new("voice", "samples_in")) .unwrap();
 
         Self {
             components: Vec::new(),
