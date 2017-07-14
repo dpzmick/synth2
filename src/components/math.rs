@@ -1,5 +1,5 @@
 use components::Component;
-use ports::{InputPortHandle, OutputPortHandle, PortManager};
+use ports::{InputPortHandle, OutputPortHandle, PortManager, PortName};
 
 use std::fmt;
 
@@ -42,11 +42,10 @@ impl<'a> Component<'a> for Math<'a> {
     fn initialize_ports(&mut self, ports: &mut PortManager<'a>)
     {
         self.input = Some(ports
-                              .register_input_port(self.name.clone(), "input".to_string())
+                              .register_input_port(&PortName::new(&self.name, "input"))
                               .unwrap());
-
         self.output = Some(ports
-                               .register_output_port(self.name.clone(), "output".to_string())
+                               .register_output_port(&PortName::new(&self.name, "output"))
                                .unwrap());
     }
 

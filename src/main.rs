@@ -10,7 +10,7 @@ extern crate serde_derive;
 
 #[macro_use]
 extern crate enum_primitive;
-// extern crate easyjack as jack;
+extern crate easyjack as jack;
 
 #[macro_use]
 extern crate ketos;
@@ -19,14 +19,14 @@ extern crate ketos;
 extern crate ketos_derive;
 
 mod components;
-// mod jack_engine;
+mod jack_engine;
 mod midi;
 mod patch;
 mod ports;
 mod soundscape;
 mod voice;
 
-// use jack_engine::run_audio_thread;
+use jack_engine::run_audio_thread;
 use patch::Patch;
 use soundscape::Soundscape;
 
@@ -36,15 +36,14 @@ static SRATE: f32 = 44100.0;
 
 fn main()
 {
-    // // start the realtime soundscape
-    // let mut soundscape = Soundscape::new();
-    // soundscape.example_connections();
-    // run_audio_thread(soundscape);
-    // loop {
-    //     use std::thread;
-    //     use std::time::Duration;
-    //     thread::sleep(Duration::from_millis(100000));
-    // }
+    // TODO return result from patch
+    let voice = Patch::from_file(Path::new("patches/sine.patch"));
+    let mut soundscape = Soundscape::new(16, voice);
+    run_audio_thread(soundscape);
 
-    let p = Patch::from_file(Path::new("patches/sine.patch"));
+    loop {
+        use std::thread;
+        use std::time::Duration;
+        thread::sleep(Duration::from_millis(100000));
+    }
 }

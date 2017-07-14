@@ -7,25 +7,20 @@ use voice::Voice;
 pub struct Soundscape<'a> {
     // this would be an array, but arrays are so severely limited in rust that I'm using a vector.
     // Don't ever resize it!
+    // TODO make this not resizable
     voices: Vec<Voice<'a>>,
 }
 
 impl<'a> Soundscape<'a> {
-    pub fn new() -> Self
+    pub fn new(polyphony: usize, voice: Voice<'a>) -> Self
     {
+        // TODO reset voice?
         let mut voices = Vec::new();
-        for _ in 0..16 {
+        for _ in 0..polyphony {
             voices.push(Voice::new());
         }
 
         Self { voices }
-    }
-
-    pub fn example_connections(&mut self)
-    {
-        for voice in &mut self.voices {
-            voice.example_connections()
-        }
     }
 
     pub fn note_on(&mut self, freq: f32, vel: f32)

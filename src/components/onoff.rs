@@ -1,5 +1,5 @@
 use components::Component;
-use ports::{InputPortHandle, OutputPortHandle, PortManager};
+use ports::{InputPortHandle, OutputPortHandle, PortManager, PortName};
 
 #[derive(Debug)]
 pub struct OnOff<'a> {
@@ -25,17 +25,16 @@ impl<'a> Component<'a> for OnOff<'a> {
     fn initialize_ports(&mut self, ports: &mut PortManager<'a>)
     {
         self.samples_in = Some(ports
-                                   .register_input_port(self.name.clone(),
-                                                        "samples_in".to_string())
+                                   .register_input_port(&PortName::new(&self.name,
+                                                                       "samples_in"))
                                    .unwrap());
-
         self.gate_in = Some(ports
-                                .register_input_port(self.name.clone(), "gate_in".to_string())
+                                .register_input_port(&PortName::new(&self.name,
+                                                                    "gate_in".to_string()))
                                 .unwrap());
-
         self.samples_out = Some(ports
-                                    .register_output_port(self.name.clone(),
-                                                          "samples_out".to_string())
+                                    .register_output_port(&PortName::new(&self.name,
+                                                                         "samples_out"))
                                     .unwrap());
     }
 

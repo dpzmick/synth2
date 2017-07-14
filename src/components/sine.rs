@@ -1,9 +1,8 @@
 // TODO FIX THIS!
-
 use SRATE;
 
 use components::{Component, ComponentConfig};
-use ports::{InputPortHandle, OutputPortHandle, PortManager};
+use ports::{InputPortHandle, OutputPortHandle, PortManager, PortName};
 
 use std::collections::HashMap;
 use std::f32;
@@ -20,7 +19,7 @@ impl ComponentConfig for SineWaveOscillatorConfig {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SineWaveOscillator<'a> {
     name: String,
     phase: f32,
@@ -52,13 +51,12 @@ impl<'a> Component<'a> for SineWaveOscillator<'a> {
         // TODO error handling?
 
         self.frequency_port = Some(ports
-                                       .register_input_port(self.get_name(),
-                                                            "frequency_in".to_string())
+                                       .register_input_port(&PortName::new(self.get_name(),
+                                                                           "frequency_in"))
                                        .unwrap());
-
         self.output_port = Some(ports
-                                    .register_output_port(self.get_name(),
-                                                          "samples_out".to_string())
+                                    .register_output_port(&PortName::new(self.get_name(),
+                                                                         "samples_out"))
                                     .unwrap());
     }
 

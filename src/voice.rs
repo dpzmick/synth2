@@ -1,5 +1,5 @@
 use components::Component;
-use ports::{InputPortHandle, OutputPortHandle, PortManager};
+use ports::{InputPortHandle, OutputPortHandle, PortManager, PortName};
 
 /// A single instance of the graph
 #[derive(Debug)]
@@ -18,15 +18,13 @@ impl<'a> Voice<'a> {
     {
         let mut ports = PortManager::new();
         let midi_frequency_in = ports
-            .register_output_port("voice".to_string(), "midi_frequency_out".to_string())
+            .register_output_port(&PortName::new("voice", "midi_frequency_out"))
             .unwrap();
-
         let midi_gate_in = ports
-            .register_output_port("voice".to_string(), "midi_gate_out".to_string())
+            .register_output_port(&PortName::new("voice", "midi_gate_out"))
             .unwrap();
-
         let samples_out = ports
-            .register_input_port("voice".to_string(), "samples_in".to_string())
+            .register_input_port(&PortName::new("voice", "samples_in"))
             .unwrap();
 
         Self {
@@ -109,50 +107,5 @@ impl<'a> Voice<'a> {
     pub fn get_port_manager_mut(&mut self) -> &mut PortManager<'a>
     {
         return &mut self.ports;
-    }
-
-    pub fn example_connections(&mut self)
-    {
-        use components::{CombineInputs, Math, OnOff, SineWaveOscillator, SquareWaveOscillator};
-
-        // // creates two harmonics
-        // // midi input goes through here to get second harmonic
-        // self.add_component(Math::new("math".to_string(), |x| x * 2.0));
-        // self.add_component(SquareWaveOscillator::new("harmonic_osc".to_string()));
-
-        // // midi input also sent through here
-        // self.add_component(SineWaveOscillator::new("base_osc".to_string()));
-
-        // // create an input combiner with 2 inputs
-        // self.add_component(CombineInputs::new("combine".to_string(), 2));
-
-        // // finally, gate is sent through the OnOff
-        // self.add_component(OnOff::new("envelope".to_string()));
-
-        // // connect things
-        // let pairs = [
-        //     // push midi frequency the right places
-        //     (("voice", "midi_frequency_out"), ("base_osc", "frequency_in")),
-        //     (("voice", "midi_frequency_out"), ("math", "input")),
-
-        //     // finish up the connections for math
-        //     (("math", "output"), ("harmonic_osc", "frequency_in")),
-
-        //     // connect the oscillators to the combiner
-        //     (("base_osc", "samples_out"), ("combine", "combine_input0")),
-        //     (("harmonic_osc", "samples_out"), ("combine", "combine_input1")),
-
-        //     // set up the envelope
-        //     (("voice", "midi_gate_out"), ("envelope", "gate_in")),
-        //     (("combine", "out"), ("envelope", "samples_in")),
-
-        //     // send audio back to the card
-        //     (("envelope", "samples_out"), ("voice", "samples_in")),
-        // ];
-
-        // for &(p1, p2) in &pairs {
-        //     println!("connecting {:?} to {:?}", p1, p2);
-        //     self.ports.connect_by_name(p1, p2).unwrap();
-        // }
     }
 }

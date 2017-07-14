@@ -1,5 +1,5 @@
 use components::Component;
-use ports::{InputPortHandle, OutputPortHandle, PortManager};
+use ports::{InputPortHandle, OutputPortHandle, PortManager, PortName};
 
 // has many inputs and combines them proportionally to how many are emitting a
 // signal
@@ -28,12 +28,12 @@ impl<'a> Component<'a> for CombineInputs<'a> {
     {
         for i in 0..self.num_inputs {
             let iname = format!("{}_input{}", self.name, i);
-            let i = ports.register_input_port(self.name.clone(), iname);
+            let i = ports.register_input_port(&PortName::new(&self.name, iname));
             self.inputs.push(i.unwrap());
         }
 
         self.output = Some(ports
-                               .register_output_port(self.name.clone(), "out".to_string())
+                               .register_output_port(&PortName::new(&self.name, "out"))
                                .unwrap());
     }
 

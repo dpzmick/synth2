@@ -3,6 +3,7 @@
 
 use components::Component;
 use components::ComponentConfig;
+use ports::PortName;
 
 use ketos;
 use ketos::ForeignValue;
@@ -18,13 +19,6 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use voice::Voice;
-
-// TODO don't use this this sucks
-#[derive(Debug)]
-struct CachePair {
-    first: (String, String),
-    second: (String, String),
-}
 
 type Decoder<T> = Box<Fn(&T) -> Result<Box<ComponentConfig>, String>>;
 
@@ -46,17 +40,14 @@ impl<'a> KetosConfigInput<'a> {
     fn get_all_decoders(&self) -> Vec<Decoder<Self>>
     {
         use components::{SineWaveOscillatorConfig, SquareWaveOscillatorConfig};
-        
         let mut decoders = Vec::new();
         decoders.push(self.make_decoder::<SquareWaveOscillatorConfig>());
-
         decoders
     }
 
     pub fn register_all_decoders(scope: &ketos::Scope)
     {
         use components::{SineWaveOscillatorConfig, SquareWaveOscillatorConfig};
-
         scope.register_struct_value::<SquareWaveOscillatorConfig>();
     }
 
@@ -75,22 +66,24 @@ impl<'a> KetosConfigInput<'a> {
     }
 }
 
+#[derive(Debug)]
+struct Connection {
+    first: PortName,
+    second: PortName,
+}
+
 #[derive(Debug, ForeignValue, FromValueRef)]
 struct Config {
-    pub connections: RefCell<Vec<CachePair>>,
+    pub connections: RefCell<Vec<Connection>>,
     pub components: RefCell<Vec<Box<ComponentConfig>>>,
 }
 
 // all the methods need to be available at global scope so might as well not put them on the struct
-fn connect(
-    config: &Config,
-    first: (&str, &str),
-    second: (&str, &str),
-) -> Result<(), ketos::Error>
+fn connect(config: &Config, first: (&str, &str), second: (&str, &str)) -> Result<(), ketos::Error>
 {
-    let p = CachePair {
-        first: (first.0.to_owned(), first.1.to_owned()),
-        second: (second.0.to_owned(), second.1.to_owned()),
+    let p = Connection {
+        first: PortName::new(first.0, first.1),
+        second: PortName::new(second.0, second.1),
     };
 
     config.connections.borrow_mut().push(p);
@@ -110,9 +103,9 @@ impl Patch {
     pub fn from_file<'a>(path: &Path) -> Voice<'a>
     {
         let cache = Rc::new(Config {
-                                 connections: RefCell::new(Vec::new()),
-                                 components: RefCell::new(Vec::new()),
-                             });
+                                connections: RefCell::new(Vec::new()),
+                                components: RefCell::new(Vec::new()),
+                            });
 
         let loader = ketos::FileModuleLoader::with_search_paths(vec![
             PathBuf::from("/home/dpzmick/.cargo/registry/src/github.com-1ecc6299db9ec823/ketos-0.9.0/lib"),
@@ -153,12 +146,12 @@ impl Patch {
 
         KetosConfigInput::register_all_decoders(interp.scope());
 
-        match interp.run_file(path){
+        match interp.run_file(path) {
             Ok(()) => (),
             Err(error) => {
                 println!("error occured: {:?}", error);
                 panic!("gtfo");
-            }
+            },
         }
 
         let result = interp.call("create", vec![ketos::Value::Foreign(cache.clone())]);
@@ -168,7 +161,7 @@ impl Patch {
             Err(error) => {
                 println!("error occured: {:?}", error);
                 panic!("gtfo");
-            }
+            },
         };
 
         // connect everything using the contents of the script
@@ -181,10 +174,7 @@ impl Patch {
         {
             let ports = voice.get_port_manager_mut();
             for connection in cache.connections.borrow().iter() {
-                if let Err(err) = ports.connect_by_name((&connection.first.0,
-                                                         &connection.first.1),
-                                                        (&connection.second.0,
-                                                         &connection.second.1)) {
+                if let Err(err) = ports.connect_by_name(&connection.first, &connection.second) {
                     println!("error occurred: {:?}", err);
                 }
             }
