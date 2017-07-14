@@ -1,5 +1,6 @@
 use components::Component;
-use ports::{InputPortHandle, OutputPortHandle, PortManager, PortName};
+use ports::{InputPortHandle, OutputPortHandle, PortName};
+use ports::{PortManager, RealtimePortManager};
 
 // has many inputs and combines them proportionally to how many are emitting a
 // signal
@@ -37,7 +38,7 @@ impl<'a> Component<'a> for CombineInputs<'a> {
                                .unwrap());
     }
 
-    fn generate(&mut self, ports: &mut PortManager)
+    fn generate(&mut self, ports: &mut RealtimePortManager)
     {
         let mut count: usize = 0;
         let mut input_sum = 0.0;

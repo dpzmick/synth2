@@ -1,13 +1,13 @@
 use ketos;
 
-use ports::PortManager;
+use ports::{PortManager, RealtimePortManager};
 
 use std::collections::HashMap;
 use std::fmt;
 
 pub trait Component<'a>: fmt::Debug {
     // audio generation
-    fn generate(&mut self, ports: &mut PortManager);
+    fn generate(&mut self, ports: &mut RealtimePortManager<'a>);
     fn initialize_ports(&mut self, ports: &mut PortManager<'a>);
 
     // ui convenience

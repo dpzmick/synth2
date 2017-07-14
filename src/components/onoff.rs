@@ -1,5 +1,6 @@
 use components::Component;
-use ports::{InputPortHandle, OutputPortHandle, PortManager, PortName};
+use ports::{InputPortHandle, OutputPortHandle, PortName};
+use ports::{PortManager, RealtimePortManager};
 
 #[derive(Debug)]
 pub struct OnOff<'a> {
@@ -38,7 +39,7 @@ impl<'a> Component<'a> for OnOff<'a> {
                                     .unwrap());
     }
 
-    fn generate(&mut self, ports: &mut PortManager)
+    fn generate(&mut self, ports: &mut RealtimePortManager)
     {
         if self.samples_in.is_none() || self.gate_in.is_none() || self.samples_out.is_none() {
             return;

@@ -1,5 +1,6 @@
 use components::Component;
-use ports::{InputPortHandle, OutputPortHandle, PortManager, PortName};
+use ports::{InputPortHandle, OutputPortHandle, PortName};
+use ports::{PortManager, RealtimePortManager};
 
 use std::fmt;
 
@@ -49,7 +50,7 @@ impl<'a> Component<'a> for Math<'a> {
                                .unwrap());
     }
 
-    fn generate(&mut self, ports: &mut PortManager)
+    fn generate(&mut self, ports: &mut RealtimePortManager)
     {
         let i = ports.get_port_value(&self.input.unwrap());
         ports.set_port_value(&self.output.unwrap(), (self.math_function)(i))

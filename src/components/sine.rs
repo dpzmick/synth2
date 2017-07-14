@@ -2,7 +2,8 @@
 use SRATE;
 
 use components::{Component, ComponentConfig};
-use ports::{InputPortHandle, OutputPortHandle, PortManager, PortName};
+use ports::{InputPortHandle, OutputPortHandle, PortName};
+use ports::{PortManager, RealtimePortManager};
 
 use std::collections::HashMap;
 use std::f32;
@@ -60,7 +61,7 @@ impl<'a> Component<'a> for SineWaveOscillator<'a> {
                                     .unwrap());
     }
 
-    fn generate(&mut self, ports: &mut PortManager)
+    fn generate(&mut self, ports: &mut RealtimePortManager)
     {
         if self.frequency_port.is_none() || self.output_port.is_none() {
             return;

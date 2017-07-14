@@ -159,13 +159,56 @@ pub enum PortManagerError {
     NoSuchPort(PortName),
 }
 
+/// A RealtimePortManager can only access the portions of a PortManager that are safe to use in a
+/// realtime context
+pub trait RealtimePortManager<'a> {
+    /// Get the current value of the port. If the port handle was registered with this
+    /// PortManager, this will never fail because ports cannot be destroyed. Calling this function
+    /// with a handle to a port from a different PortManager is undefined behavior.
+    fn get_port_value(&self, p: &PortHandle) -> f32;
+
+    /// Set the current value of the port. Calling this function with a handle to a port from a
+    /// different PortManager is undefined behavior. This may only be called on an Output port
+    fn set_port_value(&mut self, p: &OutputPortHandle, val: f32);
+}
+
 /// A port manager manages the connections between different components Every component can
 /// register a variety of input and output ports with the port manager.  When two ports are
 /// connected, any values written to the "Input" end of the port will also be written to the
 /// "Output" end An input may only have a single incoming connection, but, an output port may be
 /// connected to many outputs
+pub trait PortManager<'a>: RealtimePortManager<'a> {
+    fn register_input_port(&mut self, name: &PortName)
+        -> Result<InputPortHandle<'a>, PortManagerError>;
+
+    fn register_output_port(&mut self, name: &PortName)
+        -> Result<OutputPortHandle<'a>, PortManagerError>;
+
+    /// Connect ports
+    /// the value on the output port will always be available on the input port Note
+    /// that this will always succeed, as long as both of the port handles are owned by this
+    /// PortManager It is impossible to request an invalid connection due to type safety.
+    fn connect(&mut self, p1: &OutputPortHandle, p2: &InputPortHandle);
+
+    /// Disconnect ports
+    /// If two ports are already connected, this will remove the connection between them If they
+    /// are not connected, this will be a potentially expensive noop. It is impossible to request
+    /// an invalid disconnection due to type safety
+    fn disconnect(&mut self, p1: &OutputPortHandle, p2: &InputPortHandle);
+
+    fn connect_by_name(&mut self, p1: &PortName, p2: &PortName)
+        -> Result<(), PortManagerError>;
+
+    fn get_connections(&self) -> Vec<(OutputPortHandle, InputPortHandle)>;
+
+    fn find_port(&self, name: &PortName) -> Option<UnknownPortHandle<'a>>;
+    fn find_ports(&self, component: &str) -> Option<Vec<UnknownPortHandle<'a>>>;
+
+    fn borrow_realtime<'b>(&'b mut self) -> &'b mut RealtimePortManager<'a>;
+}
+
 #[derive(Debug)]
-pub struct PortManager<'a> {
+pub struct PortManagerImpl<'a> {
     // graph implementation
     ports: Vec<f32>,
     connections: Vec<(usize, usize)>,
@@ -179,7 +222,7 @@ pub struct PortManager<'a> {
 }
 
 // private impl
-impl<'a> PortManager<'a> {
+impl<'a> PortManagerImpl<'a> {
     fn check_key_usable(&self, component: &str, port: &str) -> bool
     {
         match self.ports_meta.get(component) {
@@ -236,7 +279,7 @@ impl<'a> PortManager<'a> {
 }
 
 // public impl
-impl<'a> PortManager<'a> {
+impl<'a> PortManagerImpl<'a> {
     pub fn new() -> Self
     {
         Self {
@@ -246,9 +289,30 @@ impl<'a> PortManager<'a> {
             phantom: PhantomData,
         }
     }
+}
 
-    /// Register a new port
-    pub fn register_input_port(
+impl<'a> RealtimePortManager<'a> for PortManagerImpl<'a> {
+    fn get_port_value(&self, p: &PortHandle) -> f32
+    {
+        self.ports[p.id()]
+    }
+
+    fn set_port_value(&mut self, p: &OutputPortHandle, val: f32)
+    {
+        // assert cannot allocate or resize
+        self.ports[p.id] = val;
+
+        for &(p1, p2) in &self.connections {
+            if p1 == p.id {
+                self.ports[p2] = val;
+            }
+        }
+    }
+
+}
+
+impl<'a> PortManager<'a> for PortManagerImpl<'a> {
+    fn register_input_port(
         &mut self,
         name: &PortName,
     ) -> Result<InputPortHandle<'a>, PortManagerError>
@@ -262,13 +326,8 @@ impl<'a> PortManager<'a> {
             })
     }
 
-    /// Register a new port
-    /// Each port is associated with a component, and must be given a name
-    /// For a single component, each port name must be unique
-    pub fn register_output_port(
-        &mut self,
-        name: &PortName,
-    ) -> Result<OutputPortHandle<'a>, PortManagerError>
+    fn register_output_port(&mut self, name: &PortName)
+        -> Result<OutputPortHandle<'a>, PortManagerError>
     {
         self.new_port(&name.component, &name.port, PortDirection::Output)
             .map(|id| {
@@ -279,65 +338,17 @@ impl<'a> PortManager<'a> {
             })
     }
 
-    /// Get the current value of the port.
-    /// If the port handle was registered with this PortManager, this will
-    /// never fail because ports
-    /// cannot be destroyed.
-    /// Calling this function with a handle to a port from a different
-    /// PortManager is undefined
-    /// behavior.
-    pub fn get_port_value(&self, p: &PortHandle) -> f32
+    fn connect(&mut self, p1: &OutputPortHandle, p2: &InputPortHandle)
     {
-        self.ports[p.id()]
-    }
-
-    /// Set the current value of the port.
-    /// Calling this function with a handle to a port from a different
-    /// PortManager is undefined
-    /// behavior.
-    /// This may only be called on an Output port
-    pub fn set_port_value(&mut self, p: &OutputPortHandle, val: f32)
-    {
-        // assert cannot allocate or resize
-        self.ports[p.id] = val;
-
-        for &(p1, p2) in &self.connections {
-            if p1 == p.id {
-                self.ports[p2] = val;
-            }
-        }
-    }
-
-    /// Connect ports, the value on the output port will always be available on
-    /// the input port
-    /// Note that this will always succeed, as long as both of the port handles
-    /// are owned by this
-    /// PortManager
-    /// It is impossible to request an invalid connection due to type safety.
-    pub fn connect(&mut self, p1: &OutputPortHandle, p2: &InputPortHandle)
-    {
-        // TODO not realtime safe
         self.connections.push((p1.id, p2.id));
     }
 
-    /// Disconnect ports
-    /// If two ports are already connected, this will remove the connection
-    /// between them
-    /// If they are not connected, this will be a potentially expensive noop
-    /// It is impossible to request an invalid disconnection due to type safety
-    pub fn disconnect(&mut self, p1: &OutputPortHandle, p2: &InputPortHandle)
+    fn disconnect(&mut self, p1: &OutputPortHandle, p2: &InputPortHandle)
     {
-        // TODO not relatime safe
-        // this will probably technically be realtime safe, but that isn't the
-        // interface we want to
-        // expose
-        self.connections
-            .retain(|&(a, b)| a != p1.id && b != p2.id);
+        self.connections.retain(|&(a, b)| a != p1.id && b != p2.id);
     }
 
-    /// Connects a pair of ports by name. Each pair is given as (component,
-    /// port)
-    pub fn connect_by_name(&mut self, p1: &PortName, p2: &PortName)
+    fn connect_by_name(&mut self, p1: &PortName, p2: &PortName)
         -> Result<(), PortManagerError>
     {
         // lookup both of the ports that are requested
@@ -357,18 +368,16 @@ impl<'a> PortManager<'a> {
             })
     }
 
-    pub fn find_port(&self, name: &PortName) -> Option<UnknownPortHandle<'a>>
+    fn find_port(&self, name: &PortName) -> Option<UnknownPortHandle<'a>>
     {
-        // must be realtime safe
         self.ports_meta
             .get(&name.component)
             .and_then(|comp| comp.get(&name.port))
             .cloned()
     }
 
-    pub fn find_ports(&self, component: &str) -> Option<Vec<UnknownPortHandle<'a>>>
+    fn find_ports(&self, component: &str) -> Option<Vec<UnknownPortHandle<'a>>>
     {
-        // TODO must be realtime safe
         self.ports_meta
             .get(component)
             .map(|comp| {
@@ -381,10 +390,8 @@ impl<'a> PortManager<'a> {
             })
     }
 
-    /// Get all of the port connections known by the system
-    pub fn get_connections(&self) -> Vec<(OutputPortHandle, InputPortHandle)>
+    fn get_connections(&self) -> Vec<(OutputPortHandle, InputPortHandle)>
     {
-        // not realtime safe
         let mut v = Vec::new();
         for &(o, i) in &self.connections {
             let e = (OutputPortHandle {
@@ -401,26 +408,15 @@ impl<'a> PortManager<'a> {
         v
     }
 
-    /// Lookup the component associated with a port handle
-    pub fn get_component<P: PortHandle>(&self, p: P) -> Option<String>
-    {
-        // probably realtime safe but super slow
-        for (component, ports) in &self.ports_meta {
-            for (_, handle) in ports.iter() {
-                if handle.id() == p.id() {
-                    return Some(component.clone());
-                }
-            }
-        }
-
-        return None;
+    fn borrow_realtime<'b>(&'b mut self) -> &'b mut RealtimePortManager<'a> {
+        self
     }
 }
 
 #[test]
 fn test_set_get()
 {
-    let mut manager = PortManager::new();
+    let mut manager = PortManagerImpl::new();
     let port = manager
         .register_output_port(&PortName::new("test", "out"))
         .unwrap();
@@ -435,7 +431,7 @@ fn test_set_get()
 #[test]
 fn test_connect()
 {
-    let mut manager = PortManager::new();
+    let mut manager = PortManagerImpl::new();
     let port1 = manager
         .register_output_port(&PortName::new("test", "out"))
         .unwrap();
@@ -455,7 +451,7 @@ fn test_connect()
 #[test]
 fn test_duplicate_port1()
 {
-    let mut manager = PortManager::new();
+    let mut manager = PortManagerImpl::new();
     let port1 = manager.register_output_port(&PortName::new("test", "name"));
     let port2 = manager.register_output_port(&PortName::new("test", "name"));
 
@@ -466,7 +462,7 @@ fn test_duplicate_port1()
 #[test]
 fn test_duplicate_port2()
 {
-    let mut manager = PortManager::new();
+    let mut manager = PortManagerImpl::new();
     let port1 = manager.register_input_port(&PortName::new("test", "name"));
     let port2 = manager.register_input_port(&PortName::new("test", "name"));
 
@@ -477,7 +473,7 @@ fn test_duplicate_port2()
 #[test]
 fn test_duplicate_port3()
 {
-    let mut manager = PortManager::new();
+    let mut manager = PortManagerImpl::new();
     let port1 = manager.register_input_port(&PortName::new("test", "name"));
     let port2 = manager.register_output_port(&PortName::new("test", "name"));
 
@@ -488,7 +484,7 @@ fn test_duplicate_port3()
 #[test]
 fn test_disconnect()
 {
-    let mut manager = PortManager::new();
+    let mut manager = PortManagerImpl::new();
     let port1 = manager
         .register_output_port(&PortName::new("test", "out"))
         .unwrap();
@@ -507,7 +503,7 @@ fn test_disconnect()
 fn test_find1()
 {
     let p = PortName::new("test", "out");
-    let mut manager = PortManager::new();
+    let mut manager = PortManagerImpl::new();
     let port1 = manager.register_output_port(&p).unwrap();
 
     let also_port1 = manager.find_port(&p);
@@ -525,7 +521,7 @@ fn test_find2()
 {
     let p = PortName::new("test", "out");
 
-    let mut manager = PortManager::new();
+    let mut manager = PortManagerImpl::new();
     let port1 = manager.register_input_port(&p).unwrap();
 
     let also_port1 = manager.find_port(&p);
@@ -541,7 +537,7 @@ fn test_find2()
 #[test]
 fn test_find3()
 {
-    let mut manager = PortManager::new();
+    let mut manager = PortManagerImpl::new();
     let port1 = manager
         .register_input_port(&PortName::new("test", "out1"))
         .unwrap();
@@ -572,7 +568,7 @@ fn test_find3()
 fn test_bad_promote()
 {
     let p = PortName::new("test", "out");
-    let mut manager = PortManager::new();
+    let mut manager = PortManagerImpl::new();
     let port1 = manager.register_output_port(&p);
     let also_port1 = manager.find_port(&p);
     assert!(also_port1.is_some());
@@ -587,7 +583,7 @@ fn test_connect_by_name()
     let i = PortName::new("test", "out");
     let o = PortName::new("test", "in");
 
-    let mut manager = PortManager::new();
+    let mut manager = PortManagerImpl::new();
     let port1 = manager.register_output_port(&i).unwrap();
     let port2 = manager.register_input_port(&o).unwrap();
 
@@ -606,7 +602,7 @@ fn test_connect_by_name_fail1()
 {
     let out = PortName::new("test", "out");
 
-    let mut manager = PortManager::new();
+    let mut manager = PortManagerImpl::new();
     let port1 = manager.register_output_port(&out).unwrap();
     let port2 = manager
         .register_input_port(&PortName::new("test", "in"))
@@ -623,7 +619,7 @@ fn test_connect_by_name_fail2()
     let n1 = PortName::new("test", "in1");
     let n2 = PortName::new("test", "in2");
 
-    let mut manager = PortManager::new();
+    let mut manager = PortManagerImpl::new();
     let port2 = manager.register_input_port(&n1).unwrap();
     let port2 = manager.register_input_port(&n2).unwrap();
     let connected = manager.connect_by_name(&n1, &n2);
@@ -636,7 +632,7 @@ fn test_connect_by_name_fail3()
     let n1 = PortName::new("test", "p1");
     let n2 = PortName::new("test", "p2".to_string());
 
-    let mut manager = PortManager::new();
+    let mut manager = PortManagerImpl::new();
     let port2 = manager.register_output_port(&n1).unwrap();
     let port2 = manager.register_output_port(&n2).unwrap();
     let connected = manager.connect_by_name(&n1, &n2);

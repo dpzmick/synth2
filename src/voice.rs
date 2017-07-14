@@ -1,11 +1,12 @@
 use components::Component;
-use ports::{InputPortHandle, OutputPortHandle, PortManager, PortName};
+use ports::{InputPortHandle, OutputPortHandle, PortManagerImpl, PortName};
+use ports::{PortManager, RealtimePortManager};
 
 /// A single instance of the graph
 #[derive(Debug)]
 pub struct Voice<'a> {
     components: Vec<Box<Component<'a> + 'a>>,
-    ports: PortManager<'a>,
+    ports: PortManagerImpl<'a>,
     // we have a few default ports to contend with
     // these are populated and read from by the audio library
     midi_frequency_in: OutputPortHandle<'a>,
@@ -16,13 +17,15 @@ pub struct Voice<'a> {
 impl<'a> Voice<'a> {
     pub fn new() -> Self
     {
-        let mut ports = PortManager::new();
+        let mut ports = PortManagerImpl::new();
         let midi_frequency_in = ports
             .register_output_port(&PortName::new("voice", "midi_frequency_out"))
             .unwrap();
+
         let midi_gate_in = ports
             .register_output_port(&PortName::new("voice", "midi_gate_out"))
             .unwrap();
+
         let samples_out = ports
             .register_input_port(&PortName::new("voice", "samples_in"))
             .unwrap();
