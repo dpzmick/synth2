@@ -8,8 +8,8 @@ reoder_imports_in_group = true # maintain internal/external groupings
 # I prefer 80 character lines but that's quite difficult when we indent with
 # four spaces
 max_width = 100
-comment_width = 80 # These can still be reasonable!
-# wrap_comments = true # this sucks and doesn't work even remotely correctly
+comment_width = 100 # These can still be reasonable!
+wrap_comments = true # this sucks and doesn't work even remotely correctly
 
 single_line_if_else_max_width = 80 # this isn't nearly permissive enough
 take_source_hints = true
