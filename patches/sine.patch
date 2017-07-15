@@ -1,9 +1,10 @@
-(define create (config)
+(define (create config)
   (do
     ; add components
-    (add-component (new SineWaveOscillatorConfig :name "sine"))
+    (add-component config (new SineWaveOscillatorConfig :name "sine"))
+    (add-component config (new OnOffConfig :name "onoff"))
 
-    ; connect components
-    ; (connect '("voice" "frequency_out") '("sine" "frequency_in"))
-    ; (connect '("sine" "samples-out")    '("voice" "samples-in"))
-    ))
+    (connect config '("voice" "midi_frequency_out") '("sine" "frequency_in"))
+    (connect config '("voice" "midi_gate_out")      '("onoff" "gate_in"))
+    (connect config '("sine" "samples_out")         '("onoff" "samples_in"))
+    (connect config '("onoff" "samples_out")        '("voice" "samples_in"))))

@@ -9,7 +9,7 @@ use ports::{PortManager, RealtimePortManager};
 use std::collections::HashMap;
 use std::f32;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, StructValue, ForeignValue, FromValueClone)]
 pub struct SineWaveOscillatorConfig {
     pub name: String,
 }
@@ -18,6 +18,10 @@ impl ComponentConfig for SineWaveOscillatorConfig {
     fn build_component<'a, 'b>(&'b self) -> Box<Component<'a> + 'a>
     {
         Box::new(SineWaveOscillator::new(self.name.clone()))
+    }
+
+    fn box_clone(&self) -> Box<ComponentConfig> {
+        Box::new(self.clone())
     }
 }
 

@@ -1,3 +1,4 @@
+use patch::Patch;
 use voice::Voice;
 
 /// A soundscape contains many voices, manages NoteOn/NoteOff for each voice
@@ -12,12 +13,11 @@ pub struct Soundscape<'a> {
 }
 
 impl<'a> Soundscape<'a> {
-    pub fn new(polyphony: usize, voice: Voice<'a>) -> Self
+    pub fn new(polyphony: usize, p: Patch) -> Self
     {
-        // TODO reset voice?
         let mut voices = Vec::new();
         for _ in 0..polyphony {
-            voices.push(Voice::new());
+            voices.push(p.create_voice());
         }
 
         Self { voices }

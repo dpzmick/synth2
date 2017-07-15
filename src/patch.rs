@@ -7,7 +7,6 @@ use components::ComponentConfig;
 use ketos;
 use ketos::ForeignValue;
 use ketos::FromValue;
-use ketos::FromValueRef;
 use ketos::ModuleLoader;
 use ports::PortName;
 
@@ -22,6 +21,7 @@ use voice::Voice;
 
 type Decoder<T> = Box<Fn(&T) -> Result<Box<ComponentConfig>, String>>;
 
+#[derive(Debug)]
 struct KetosConfigInput<'a> {
     value: &'a ketos::Value,
 }
@@ -32,24 +32,36 @@ impl<'a> KetosConfigInput<'a> {
         -> Decoder<Self>
     {
         Box::new(|this: &KetosConfigInput| {
+            println!("attemting to decode for {:?}", this);
             T::from_value(this.value.clone())
                 .map(|v| Box::new(v) as Box<ComponentConfig>)
-                .map_err(|_| "Component not a valid type".to_owned())
+                .map_err(|err| {
+                    println!("{:?}", err);
+                    "Component not a valid type".to_owned()
+                })
         })
     }
 
     fn get_all_decoders(&self) -> Vec<Decoder<Self>>
     {
         use components::{SineWaveOscillatorConfig, SquareWaveOscillatorConfig};
+        use components::{OnOffConfig};
+
         let mut decoders = Vec::new();
+        decoders.push(self.make_decoder::<SineWaveOscillatorConfig>());
         decoders.push(self.make_decoder::<SquareWaveOscillatorConfig>());
+        decoders.push(self.make_decoder::<OnOffConfig>());
         decoders
     }
 
     pub fn register_all_decoders(scope: &ketos::Scope)
     {
         use components::{SineWaveOscillatorConfig, SquareWaveOscillatorConfig};
+        use components::{OnOffConfig};
+
+        scope.register_struct_value::<SineWaveOscillatorConfig>();
         scope.register_struct_value::<SquareWaveOscillatorConfig>();
+        scope.register_struct_value::<OnOffConfig>();
     }
 
     /// Attempts to build a component config from some underlying config format
@@ -63,16 +75,13 @@ impl<'a> KetosConfigInput<'a> {
             }
         }
 
-        Err("NONE FOUND".to_owned())
+        Err(format!("Could not decode the rust struct for {:?}", self.value))
     }
 }
 
-#[derive(Debug)]
-struct Connection {
-    first: PortName,
-    second: PortName,
-}
-
+/// Exists only to allow us to read values from ketos
+/// Values are copied from here into the actual patch after we are done with the
+/// ketos magic
 #[derive(Debug, ForeignValue, FromValueRef)]
 struct Config {
     pub connections: RefCell<Vec<Connection>>,
@@ -100,18 +109,26 @@ fn add_component(config: &Config, comp: Box<ComponentConfig>)
     Ok(())
 }
 
-pub struct Patch {}
+#[derive(Debug, Clone)]
+struct Connection {
+    first: PortName,
+    second: PortName,
+}
+
+/// A can be used to create an instance of a Voice with a certain configuration.
+pub struct Patch {
+    connections: Vec<Connection>,
+    components: Vec<Box<ComponentConfig>>,
+}
 
 // public impl
 impl Patch {
-    pub fn from_file<'a>(path: &Path) -> Voice<'a>
+    pub fn from_file(path: &Path) -> Result<Self, String>
     {
-        let cache = Rc::new(
-            Config {
-                connections: RefCell::new(Vec::new()),
-                components: RefCell::new(Vec::new()),
-            }
-        );
+        let config = Rc::new(Config {
+            connections: RefCell::new(Vec::new()),
+            components: RefCell::new(Vec::new()),
+        });
 
         let loader = ketos::FileModuleLoader::with_search_paths(vec![
                 PathBuf::from("/home/dpzmick/.cargo/registry/src/github.com-1ecc6299db9ec823/ketos-0.9.0/lib"),
@@ -124,7 +141,7 @@ impl Patch {
             interp.scope()
             => "connect"
             => fn connect(
-                cache: &Config,
+                config: &Config,
                 first: (&str, &str),
                 second: (&str, &str))
             -> ()
@@ -144,49 +161,58 @@ impl Patch {
                 let mut iter = (&*args).iter();
 
                 let value = iter.next().unwrap();
-                let cache = try!(
+                let config = try!(
                     <&Config as ketos::value::FromValueRef>::from_value_ref(value));
 
                 let value = iter.next().unwrap();
                 let kval = KetosConfigInput { value };
-                let config = kval.parse().unwrap(); // TODO
+                let compconfig = kval.parse().unwrap(); // TODO
 
-                let res = try!(add_component(cache, config));
+                let res = try!(add_component(config, compconfig));
                 Ok(<() as Into<ketos::value::Value>>::into(res))
             })
         });
 
         KetosConfigInput::register_all_decoders(interp.scope());
 
-        match interp.run_file(path) {
-            Ok(()) => (),
-            Err(error) => {
-                println!("error occured: {:?}", error);
-                panic!("gtfo");
-            },
-        }
+        interp.run_file(path)
+            .and_then(|_| {
+                interp.call("create", vec![ketos::Value::Foreign(config.clone())])
+            })
+            .map(|_value| {
+                // ignore the return, reuse the original config, then create the
+                // actual patch from the config
+                let mut p = Patch {
+                    connections: Vec::new(),
+                    components: Vec::new(),
+                };
 
-        let result = interp.call(
-            "create", vec![ketos::Value::Foreign(cache.clone())]);
+                p.connections.clone_from(&*config.connections.borrow());
+                p.components.clone_from(&*config.components.borrow());
 
-        let result = match result {
-            Ok(result) => result,
-            Err(error) => {
-                println!("error occured: {:?}", error);
-                panic!("gtfo");
-            },
-        };
+                p
+            })
+            .map_err(|error| {
+                use ketos::name::display_names;
+                use std::ops::Deref;
 
+                format!("{}", display_names(
+                        interp.scope().borrow_names().deref(),
+                        &error))
+            })
+    }
+
+    pub fn create_voice<'a>(&self) -> Voice<'a> {
         // connect everything using the contents of the script
         let mut voice = Voice::new();
 
-        for config in cache.components.borrow().iter() {
+        for config in self.components.iter() {
             voice.add_component(config.build_component());
         }
 
         {
             let ports = voice.get_port_manager_mut();
-            for connection in cache.connections.borrow().iter() {
+            for connection in self.connections.iter() {
                 let res = ports.connect_by_name(
                     &connection.first, &connection.second);
                 if let Err(err) = res {

@@ -10,7 +10,7 @@ mod square;
 
 pub use self::combine::CombineInputs;
 pub use self::math::Math;
-pub use self::onoff::OnOff;
+pub use self::onoff::{OnOff, OnOffConfig};
 pub use self::sine::{SineWaveOscillator, SineWaveOscillatorConfig};
 pub use self::square::{SquareWaveOscillator, SquareWaveOscillatorConfig};
 

@@ -1,6 +1,22 @@
-use components::Component;
+use components::{Component, ComponentConfig};
 use ports::{InputPortHandle, OutputPortHandle, PortName};
 use ports::{PortManager, RealtimePortManager};
+
+#[derive(Debug, Clone, StructValue, ForeignValue, FromValueClone)]
+pub struct OnOffConfig {
+    pub name: String,
+}
+
+impl ComponentConfig for OnOffConfig {
+    fn build_component<'a, 'b>(&'b self) -> Box<Component<'a> + 'a>
+    {
+        Box::new(OnOff::new(self.name.clone()))
+    }
+
+    fn box_clone(&self) -> Box<ComponentConfig> {
+        Box::new(self.clone())
+    }
+}
 
 #[derive(Debug)]
 pub struct OnOff<'a> {

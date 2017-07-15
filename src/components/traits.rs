@@ -18,4 +18,13 @@ pub trait Component<'a>: fmt::Debug {
 pub trait ComponentConfig: fmt::Debug {
     /// Builds a component from a component config
     fn build_component<'a, 'b>(&'b self) -> Box<Component<'a> + 'a>;
+
+    /// Clones the underlying config and returns it as a trait object
+    fn box_clone(&self) -> Box<ComponentConfig>;
+}
+
+impl Clone for Box<ComponentConfig> {
+    fn clone(&self) -> Self {
+        self.box_clone()
+    }
 }

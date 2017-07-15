@@ -36,9 +36,8 @@ static SRATE: f32 = 44100.0;
 
 fn main()
 {
-    // TODO return result from patch
-    let voice = Patch::from_file(Path::new("patches/sine.patch"));
-    let mut soundscape = Soundscape::new(16, voice);
+    let patch = Patch::from_file(Path::new("patches/sine.patch")).unwrap();
+    let soundscape = Soundscape::new(16, patch);
     run_audio_thread(soundscape);
 
     loop {
