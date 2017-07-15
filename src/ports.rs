@@ -131,7 +131,7 @@ impl<'a> PortHandle for OutputPortHandle<'a> {
 impl<'a, T: PortHandle> PartialEq<T> for OutputPortHandle<'a> {
     fn eq(&self, other: &T) -> bool
     {
-        self.id() == other.id() && self.direction() == other.direction()
+        other as &PortHandle == self as &PortHandle
     }
 }
 
