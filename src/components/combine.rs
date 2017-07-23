@@ -1,6 +1,6 @@
 use components::Component;
 use ports::{InputPortHandle, OutputPortHandle, PortName};
-use ports::{PortManager, RealtimePortManager};
+use ports::{PortManager, RealtimePortManager, PortManagerError};
 
 // has many inputs and combines them proportionally to how many are emitting a
 // signal
@@ -26,6 +26,7 @@ impl<'a> CombineInputs<'a> {
 
 impl<'a> Component<'a> for CombineInputs<'a> {
     fn initialize_ports(&mut self, ports: &mut PortManager<'a>)
+        -> Result<(), PortManagerError>
     {
         for i in 0..self.num_inputs {
             let iname = format!("{}_input{}", self.name, i);
@@ -37,6 +38,8 @@ impl<'a> Component<'a> for CombineInputs<'a> {
 
         self.output = Some(ports.register_output_port(
                 &PortName::new(&self.name, "out")) .unwrap());
+
+        Ok( () )
     }
 
     fn generate(&mut self, ports: &mut RealtimePortManager)

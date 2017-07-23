@@ -1,6 +1,6 @@
 use ketos;
 
-use ports::{PortManager, RealtimePortManager};
+use ports::{PortManager, RealtimePortManager, PortManagerError};
 
 use std::collections::HashMap;
 use std::fmt;
@@ -8,9 +8,10 @@ use std::fmt;
 pub trait Component<'a>: fmt::Debug {
     // audio generation
     fn generate(&mut self, ports: &mut RealtimePortManager<'a>);
-    fn initialize_ports(&mut self, ports: &mut PortManager<'a>);
 
-    // ui convenience
+    fn initialize_ports(&mut self, ports: &mut PortManager<'a>)
+        -> Result<(), PortManagerError>;
+
     fn get_name(&self) -> String;
 }
 

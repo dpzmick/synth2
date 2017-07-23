@@ -4,7 +4,7 @@ use SRATE;
 
 use components::{Component, ComponentConfig};
 use ports::{InputPortHandle, OutputPortHandle, PortName};
-use ports::{PortManager, RealtimePortManager};
+use ports::{PortManager, RealtimePortManager, PortManagerError};
 
 use std::collections::HashMap;
 use std::f32;
@@ -12,12 +12,14 @@ use std::f32;
 #[derive(Debug, Clone, StructValue, ForeignValue, FromValueClone)]
 pub struct SineWaveOscillatorConfig {
     pub name: String,
+    pub frequency_input_name: String,
+    pub samples_output_name: String,
 }
 
 impl ComponentConfig for SineWaveOscillatorConfig {
     fn build_component<'a, 'b>(&'b self) -> Box<Component<'a> + 'a>
     {
-        Box::new(SineWaveOscillator::new(self.name.clone()))
+        Box::new(SineWaveOscillator::new(self.clone()))
     }
 
     fn box_clone(&self) -> Box<ComponentConfig> {
@@ -27,17 +29,17 @@ impl ComponentConfig for SineWaveOscillatorConfig {
 
 #[derive(Debug, Clone)]
 pub struct SineWaveOscillator<'a> {
-    name: String,
+    config: SineWaveOscillatorConfig,
     phase: f32,
     frequency_port: Option<InputPortHandle<'a>>,
     output_port: Option<OutputPortHandle<'a>>,
 }
 
 impl<'a> SineWaveOscillator<'a> {
-    pub fn new(name: String) -> Self
+    pub fn new(config: SineWaveOscillatorConfig) -> Self
     {
         Self {
-            name,
+            config,
             phase: 0.0,
             frequency_port: None,
             output_port: None,
@@ -53,17 +55,32 @@ impl<'a> SineWaveOscillator<'a> {
 
 impl<'a> Component<'a> for SineWaveOscillator<'a> {
     fn initialize_ports(&mut self, ports: &mut PortManager<'a>)
+        -> Result<(), PortManagerError>
     {
-        // TODO error handling?
+        println!("initing ports");
 
-        self.frequency_port = Some(ports.register_input_port(
-                &PortName::new(self.get_name(), "frequency_in")) .unwrap());
+        let input_name = PortName::new(
+            &self.config.name, &self.config.frequency_input_name);
 
-        self.output_port = Some(ports.register_output_port(
-                &PortName::new(self.get_name(), "samples_out")).unwrap());
+        let output_name = PortName::new(
+            &self.config.name, &self.config.samples_output_name);
+
+        let res = ports.register_input_port(&input_name)
+            .and_then(|port| {
+                println!("port: {:?}", port);
+                self.frequency_port = Some(port);
+                ports.register_output_port(&output_name)
+            })
+            .map(|port| {
+                println!("port: {:?}", port);
+                self.output_port = Some(port);
+            });
+
+        println!("self: {:?}", self);
+        res
     }
 
-    fn generate(&mut self, ports: &mut RealtimePortManager)
+    fn generate(&mut self, ports: &mut RealtimePortManager<'a>)
     {
         if self.frequency_port.is_none() || self.output_port.is_none() {
             return;
@@ -82,6 +99,6 @@ impl<'a> Component<'a> for SineWaveOscillator<'a> {
 
     fn get_name(&self) -> String
     {
-        self.name.clone()
+        self.config.name.clone()
     }
 }

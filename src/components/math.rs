@@ -1,6 +1,6 @@
 use components::Component;
 use ports::{InputPortHandle, OutputPortHandle, PortName};
-use ports::{PortManager, RealtimePortManager};
+use ports::{PortManager, RealtimePortManager, PortManagerError};
 
 use std::fmt;
 
@@ -40,10 +40,13 @@ impl<'a> Math<'a> {
 
 impl<'a> Component<'a> for Math<'a> {
     fn initialize_ports(&mut self, ports: &mut PortManager<'a>)
+        -> Result<(), PortManagerError>
     {
         self.input = Some(ports.register_input_port(&PortName::new(&self.name, "input")).unwrap());
         self.output = Some(ports.register_output_port(
                 &PortName::new(&self.name, "output")).unwrap());
+
+        Ok( () )
     }
 
     fn generate(&mut self, ports: &mut RealtimePortManager)

@@ -25,6 +25,8 @@ mod patch;
 mod ports;
 mod soundscape;
 mod voice;
+mod util;
+mod topo;
 
 use jack_engine::run_audio_thread;
 use patch::Patch;
@@ -37,7 +39,7 @@ static SRATE: f32 = 44100.0;
 fn main()
 {
     let patch = Patch::from_file(Path::new("patches/sine.patch")).unwrap();
-    let soundscape = Soundscape::new(16, patch);
+    let soundscape = Soundscape::new(1, patch);
     run_audio_thread(soundscape);
 
     loop {

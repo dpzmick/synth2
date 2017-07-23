@@ -44,23 +44,23 @@ impl<'a> KetosConfigInput<'a> {
 
     fn get_all_decoders(&self) -> Vec<Decoder<Self>>
     {
-        use components::{SineWaveOscillatorConfig, SquareWaveOscillatorConfig};
+        use components::SineWaveOscillatorConfig;
         use components::{OnOffConfig};
 
         let mut decoders = Vec::new();
         decoders.push(self.make_decoder::<SineWaveOscillatorConfig>());
-        decoders.push(self.make_decoder::<SquareWaveOscillatorConfig>());
+        // decoders.push(self.make_decoder::<SquareWaveOscillatorConfig>());
         decoders.push(self.make_decoder::<OnOffConfig>());
         decoders
     }
 
     pub fn register_all_decoders(scope: &ketos::Scope)
     {
-        use components::{SineWaveOscillatorConfig, SquareWaveOscillatorConfig};
+        use components::SineWaveOscillatorConfig;
         use components::{OnOffConfig};
 
         scope.register_struct_value::<SineWaveOscillatorConfig>();
-        scope.register_struct_value::<SquareWaveOscillatorConfig>();
+        // scope.register_struct_value::<SquareWaveOscillatorConfig>();
         scope.register_struct_value::<OnOffConfig>();
     }
 
@@ -109,16 +109,18 @@ fn add_component(config: &Config, comp: Box<ComponentConfig>)
     Ok(())
 }
 
+// TODO don't make everything on these pub?
+
 #[derive(Debug, Clone)]
-struct Connection {
-    first: PortName,
-    second: PortName,
+pub struct Connection {
+    pub first: PortName,
+    pub second: PortName,
 }
 
 /// A can be used to create an instance of a Voice with a certain configuration.
 pub struct Patch {
-    connections: Vec<Connection>,
-    components: Vec<Box<ComponentConfig>>,
+    pub connections: Vec<Connection>,
+    pub components: Vec<Box<ComponentConfig>>,
 }
 
 // public impl
@@ -200,28 +202,5 @@ impl Patch {
                         interp.scope().borrow_names().deref(),
                         &error))
             })
-    }
-
-    pub fn create_voice<'a>(&self) -> Voice<'a> {
-        // connect everything using the contents of the script
-        let mut voice = Voice::new();
-
-        for config in self.components.iter() {
-            voice.add_component(config.build_component());
-        }
-
-        {
-            let ports = voice.get_port_manager_mut();
-            for connection in self.connections.iter() {
-                let res = ports.connect_by_name(
-                    &connection.first, &connection.second);
-                if let Err(err) = res {
-                    println!("error occurred: {:?}", err);
-                }
-            }
-        }
-
-        println!("{:#?}", voice);
-        voice
     }
 }

@@ -1,6 +1,6 @@
 use components::{Component, ComponentConfig};
 use ports::{InputPortHandle, OutputPortHandle, PortName};
-use ports::{PortManager, RealtimePortManager};
+use ports::{PortManager, RealtimePortManager, PortManagerError};
 
 #[derive(Debug, Clone, StructValue, ForeignValue, FromValueClone)]
 pub struct OnOffConfig {
@@ -40,6 +40,7 @@ impl<'a> OnOff<'a> {
 
 impl<'a> Component<'a> for OnOff<'a> {
     fn initialize_ports(&mut self, ports: &mut PortManager<'a>)
+        -> Result<(), PortManagerError>
     {
         self.samples_in = Some(ports.register_input_port(
                 &PortName::new(&self.name, "samples_in")) .unwrap());
@@ -49,6 +50,8 @@ impl<'a> Component<'a> for OnOff<'a> {
 
         self.samples_out = Some(ports.register_output_port(
                 &PortName::new(&self.name, "samples_out")).unwrap());
+
+        Ok( () )
     }
 
     fn generate(&mut self, ports: &mut RealtimePortManager)

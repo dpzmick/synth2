@@ -17,7 +17,7 @@ impl<'a> Soundscape<'a> {
     {
         let mut voices = Vec::new();
         for _ in 0..polyphony {
-            voices.push(p.create_voice());
+            voices.push(Voice::new(&p).unwrap());
         }
 
         Self { voices }

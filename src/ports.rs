@@ -1,3 +1,5 @@
+use util;
+
 use std::collections::HashMap;
 use std::marker::PhantomData;
 
@@ -210,12 +212,20 @@ pub trait PortManager<'a>: RealtimePortManager<'a> {
 
     fn find_port(&self, name: &PortName) -> Option<UnknownPortHandle<'a>>;
     fn find_ports(&self, component: &str) -> Option<Vec<UnknownPortHandle<'a>>>;
+
+    /// Returns a copy of the component adjacency matrix for this port manager
+    /// and map from Component Name -> index in the matrix that was used when
+    /// creating the matrix
+    fn get_component_adjacency_matrix(&self)
+        -> (HashMap<usize, String>, util::nmat::NMat<bool, util::nmat::RowMajor>);
 }
 
 #[derive(Debug)]
 pub struct PortManagerImpl<'a> {
     // graph implementation
     ports: Vec<f32>,
+    // not using an adjacency matrix here to keep the cost of resizing lower
+    // and because the matrix will likely be sparse
     connections: Vec<(usize, usize)>,
 
     // metadata information
@@ -408,6 +418,49 @@ impl<'a> PortManager<'a> for PortManagerImpl<'a> {
         }
 
         v
+    }
+
+    fn get_component_adjacency_matrix(&self)
+        -> (HashMap<usize, String>, util::nmat::NMat<bool, util::nmat::RowMajor>)
+    {
+
+        // map component name to matrix index
+        let mut name_map: HashMap<String, usize> = HashMap::new();
+        let mut port_map: HashMap<usize, String> = HashMap::new();
+
+        for (comp_name, ports) in &self.ports_meta {
+            let next = name_map.len();
+            name_map.entry(comp_name.to_owned()).or_insert(next);
+
+            for (_, handle) in ports.iter() {
+                port_map.insert(handle.id(), comp_name.to_owned());
+            }
+        }
+
+        // we now have a single id for each component we know which component
+        // each port maps to. Now we can create one node for each component and
+        // set up the connections
+        let n_components = self.ports_meta.len();
+        let mut adj = util::nmat::NMat::new(n_components);
+
+        for &(first, second) in self.connections.iter() {
+            let first_component_name = port_map.get(&first).unwrap();
+            let first_component_idx = name_map[first_component_name];
+
+            let second_component_name = port_map.get(&second).unwrap();
+            let second_component_idx  = name_map[second_component_name];
+
+            adj[(first_component_idx, second_component_idx)] = true;
+        }
+
+        // reverse the name_map so users can lookup a name by idx instead of
+        // looking up an idx by name
+        let mut idx_map = HashMap::new();
+        for (k, v) in name_map.iter() {
+            idx_map.insert(*v, k.to_owned());
+        }
+
+        (idx_map, adj)
     }
 }
 
