@@ -122,6 +122,8 @@ impl<T, O: Ordering> IndexMut<(usize, usize)> for NMat<T, O> {
 
 #[cfg(test)]
 mod test {
+    use super::*;
+
     fn test_simple_matrix_impl<O: Ordering>() {
         let mut mat: NMat<i64, O> = NMat::new(4);
         mat[(0,0)] = 1;
