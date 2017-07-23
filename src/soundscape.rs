@@ -49,6 +49,14 @@ impl<'a> Soundscape<'a> {
         }
     }
 
+    pub fn control_value_change(&mut self, cc: u8, new_val: u8)
+    {
+        // all voices get the change
+        for voice in &mut self.voices {
+            voice.control_value_change(cc, new_val)
+        }
+    }
+
     pub fn generate(&mut self) -> f32
     {
         let mut sample = 0.0;

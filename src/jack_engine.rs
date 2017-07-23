@@ -71,6 +71,12 @@ impl<'a> jack::ProcessHandler for AudioHandler<'a> {
                         self.soundscape.note_on(f, v);
                     },
 
+                    MidiStatus::ControlChange => {
+                        let cc = m.data[1];
+                        let val = m.data[2];
+                        self.soundscape.control_value_change(cc, val);
+                    },
+
                     _ => (),
                 }
 

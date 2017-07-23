@@ -15,6 +15,7 @@ pub struct Voice<'a> {
     // these are populated and read from by the audio library
     midi_frequency_in: OutputPortHandle<'a>,
     midi_gate_in: OutputPortHandle<'a>,
+    midi_control_ports: Vec<OutputPortHandle<'a>>,
     samples_out: InputPortHandle<'a>,
 }
 
@@ -31,6 +32,15 @@ impl<'a> Voice<'a> {
 
         let samples_out = ports.register_input_port(
             &PortName::new("voice", "samples_in")).unwrap();
+
+        let mut midi_control_ports = Vec::new();
+        // register all of the midi control signals
+        // there are 128 total available in the midi spec
+        for i in 0..128 {
+            let n = format!("midi_control_{}", i);
+            let pn = PortName::new("voice", n);
+            midi_control_ports.push(ports.register_output_port(&pn).unwrap());
+        }
 
         // First, register all of the components with the port manager
         let mut components = Vec::new();
@@ -95,13 +105,13 @@ impl<'a> Voice<'a> {
             ports: ports,
             midi_frequency_in,
             midi_gate_in,
+            midi_control_ports,
             samples_out,
         })
     }
 
     pub fn note_on(&mut self, freq: f32, vel: f32)
     {
-        println!("note on");
         // TODO realtime safe
         // TODO velocity?
         self.ports.set_port_value(&self.midi_frequency_in, freq);
@@ -112,6 +122,12 @@ impl<'a> Voice<'a> {
     {
         // TODO realtime safe
         self.ports.set_port_value(&self.midi_gate_in, 0.0);
+    }
+
+    pub fn control_value_change(&mut self, cc: u8, new_val: u8)
+    {
+        let handle = &self.midi_control_ports[cc as usize];
+        self.ports.set_port_value(handle, new_val as f32);
     }
 
     pub fn current_frequency(&self) -> Option<f32>
