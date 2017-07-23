@@ -124,18 +124,6 @@ impl<'a> Voice<'a> {
         }
     }
 
-    pub fn add_component(&mut self, comp: Box<Component<'a> + 'a>)
-        -> Result<(), PortManagerError>
-    {
-        // TODO ensure name unique
-        // TODO NOT realtime safe
-        // TODO fix this up, do a sort
-        self.components.push(comp);
-        let s = self.components.len();
-        let comp = &mut self.components[s - 1];
-        comp.initialize_ports(&mut self.ports)
-    }
-
     /// Generate a single sample
     pub fn generate(&mut self) -> f32
     {
