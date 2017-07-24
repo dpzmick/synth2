@@ -1,14 +1,18 @@
-use ketos;
-
 use ports::{PortManager, RealtimePortManager, PortManagerError};
+use audioprops::AudioProperties;
 
-use std::collections::HashMap;
 use std::fmt;
 
 pub trait Component<'a>: fmt::Debug {
-    // audio generation
+    /// Called when it is time for the component to generate audio on its output
+    /// ports
     fn generate(&mut self, ports: &mut RealtimePortManager<'a>);
 
+    /// Called with the audio system property that has changed
+    /// A default noop implementation is provided
+    fn handle_audio_property_change(&mut self, props: AudioProperties) { }
+
+    // port management
     fn initialize_ports(&mut self, ports: &mut PortManager<'a>)
         -> Result<(), PortManagerError>;
 

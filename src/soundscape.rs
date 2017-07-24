@@ -1,3 +1,4 @@
+use audioprops::AudioProperties;
 use patch::Patch;
 use voice::Voice;
 
@@ -54,6 +55,13 @@ impl<'a> Soundscape<'a> {
         // all voices get the change
         for voice in &mut self.voices {
             voice.control_value_change(cc, new_val)
+        }
+    }
+
+    pub fn audio_property_change(&mut self, prop: AudioProperties)
+    {
+        for voice in &mut self.voices {
+            voice.audio_property_change(prop)
         }
     }
 

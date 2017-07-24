@@ -1,9 +1,12 @@
-use jack;
-
 use midi::{MidiMessage, MidiStatus};
 use soundscape::Soundscape;
+use audioprops::AudioProperties;
+
+use jack;
+
 use std;
 use std::mem;
+use std::sync::mpsc;
 
 type OPort = jack::OutputPortHandle<jack::DefaultAudioSample>;
 type IPort = jack::InputPortHandle<jack::MidiEvent>;
@@ -20,20 +23,43 @@ fn midi_velocity_to_velocity(vel: u8) -> f32
     vel as f32 / (std::u8::MAX as f32)
 }
 
+enum Message {
+    AudioProperties(AudioProperties)
+}
+
 struct AudioHandler<'a> {
     input: IPort,
     output: OPort,
+    // I own the soundscape
     soundscape: Soundscape<'a>,
+    // Any additional soundscape operations will be sent over a queue to this
+    // thread, instead of requiring the soundscape to manage any synchronization
+    incoming: mpsc::Receiver<Message>
 }
 
 impl<'a> AudioHandler<'a> {
-    pub fn new(input: IPort, output: OPort, soundscape: Soundscape<'a>)
-        -> Self
+    pub fn new(
+        input: IPort,
+        output: OPort,
+        soundscape: Soundscape<'a>,
+        incoming: mpsc::Receiver<Message>)
+    -> Self
     {
         Self {
             input,
             output,
             soundscape,
+            incoming,
+        }
+    }
+
+    fn handle_incoming(&mut self)
+    {
+        while let Ok(m) = self.incoming.try_recv() {
+            match m {
+                Message::AudioProperties(p) =>
+                    self.soundscape.audio_property_change(p)
+            }
         }
     }
 }
@@ -42,6 +68,8 @@ impl<'a> jack::ProcessHandler for AudioHandler<'a> {
     fn process(&mut self, ctx: &jack::CallbackContext, nframes: jack::NumFrames)
         -> i32
     {
+        self.handle_incoming();
+
         let output_buffer = self.output.get_write_buffer(nframes, &ctx);
         let input_buffer = self.input.get_read_buffer(nframes, &ctx);
 
@@ -89,6 +117,34 @@ impl<'a> jack::ProcessHandler for AudioHandler<'a> {
     }
 }
 
+struct MetadataHandler {
+    sender: mpsc::SyncSender<Message>,
+}
+
+impl MetadataHandler {
+    fn new(sender: mpsc::SyncSender<Message>) -> Self
+    {
+        Self { sender }
+    }
+}
+
+impl jack::MetadataHandler for MetadataHandler {
+    fn sample_rate_changed(&mut self, srate: jack::NumFrames) -> i32
+    {
+        let prop = AudioProperties::SampleRate(srate as f32);
+        let message = Message::AudioProperties(prop);
+        self.sender.send(message).unwrap(); // TODO bad!
+
+        0 // success
+    }
+
+    fn callbacks_of_interest(&self) -> Vec<jack::MetadataHandlers>
+    {
+        vec![jack::MetadataHandlers::SampleRate]
+    }
+}
+
+
 pub fn run_audio_thread(soundscape: Soundscape)
 {
     let mut c = jack::Client::open("sine", jack::options::NO_START_SERVER)
@@ -98,9 +154,16 @@ pub fn run_audio_thread(soundscape: Soundscape)
     let i = c.register_input_midi_port("midi_in").unwrap();
     let o = c.register_output_audio_port("audio_out").unwrap();
 
-    let handler = AudioHandler::new(i, o, soundscape);
+    let (sender, receiver) = mpsc::sync_channel(1024);
 
-    c.set_process_handler(handler).unwrap();
+    // TODO make sure easy jack has appropriate thread safety stuff added
+    // The audio handler thread takes ownership of the soundscape.
+    // Any external messages to the soundscape must be sent over a channel
+    let ahandler = AudioHandler::new(i, o, soundscape, receiver);
+    let mhandler = MetadataHandler::new(sender.clone());
+
+    c.set_process_handler(ahandler).unwrap();
+    c.set_metadata_handler(mhandler).unwrap();
 
     c.activate().unwrap();
     c.connect_ports("sine:audio_out", "system:playback_1")

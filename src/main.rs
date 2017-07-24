@@ -1,12 +1,6 @@
-// clippy
-#![cfg_attr(feature="clippy", feature(plugin))]
-#![cfg_attr(feature="clippy", plugin(clippy))]
-
 #![feature(conservative_impl_trait)]
 
 extern crate serde;
-#[macro_use]
-extern crate serde_derive;
 
 #[macro_use]
 extern crate enum_primitive;
@@ -18,23 +12,22 @@ extern crate ketos;
 #[macro_use]
 extern crate ketos_derive;
 
+mod audioprops;
 mod components;
 mod jack_engine;
 mod midi;
 mod patch;
 mod ports;
 mod soundscape;
-mod voice;
-mod util;
 mod topo;
+mod util;
+mod voice;
 
 use jack_engine::run_audio_thread;
 use patch::Patch;
 use soundscape::Soundscape;
 
 use std::path::Path;
-
-static SRATE: f32 = 44100.0;
 
 fn main()
 {

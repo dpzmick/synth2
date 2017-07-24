@@ -1,23 +1,18 @@
 // try to keep all of the code needed to manage the entire ketos runtime
 // contained to this file, if possible
 
-use components::Component;
-use components::ComponentConfig;
+use components::{Component, ComponentConfig};
+use voice::Voice;
 
 use ketos;
-use ketos::ForeignValue;
-use ketos::FromValue;
 use ketos::ModuleLoader;
 use ports::PortName;
 
 use serde;
 use std::cell::RefCell;
-use std::marker::PhantomData;
-
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
-use voice::Voice;
 
 type Decoder<T> = Box<Fn(&T) -> Result<Box<ComponentConfig>, String>>;
 
@@ -32,11 +27,9 @@ impl<'a> KetosConfigInput<'a> {
         -> Decoder<Self>
     {
         Box::new(|this: &KetosConfigInput| {
-            println!("attemting to decode for {:?}", this);
             T::from_value(this.value.clone())
                 .map(|v| Box::new(v) as Box<ComponentConfig>)
                 .map_err(|err| {
-                    println!("{:?}", err);
                     "Component not a valid type".to_owned()
                 })
         })

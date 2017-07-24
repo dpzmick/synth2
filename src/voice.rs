@@ -1,3 +1,4 @@
+use audioprops::AudioProperties;
 use components::Component;
 use patch::Patch;
 use ports::{InputPortHandle, OutputPortHandle, PortManagerImpl, PortName};
@@ -47,10 +48,7 @@ impl<'a> Voice<'a> {
 
         for config in patch.components.iter() {
             let mut comp = config.build_component();
-            if let Err(e) = comp.initialize_ports(&mut ports) {
-                return Err(e);
-            }
-
+            comp.initialize_ports(&mut ports)?;
             components.push(comp);
         }
 
@@ -62,12 +60,7 @@ impl<'a> Voice<'a> {
 
         // now connect everything according to the patch
         for connection in patch.connections.iter() {
-            let res = ports.connect_by_name(
-                &connection.first, &connection.second);
-
-            if let Err(err) = res {
-                return Err(err);
-            }
+            ports.connect_by_name(&connection.first, &connection.second)?;
         }
 
         // now the port manager knows all of the connections, lets do the sort!
@@ -128,6 +121,13 @@ impl<'a> Voice<'a> {
     {
         let handle = &self.midi_control_ports[cc as usize];
         self.ports.set_port_value(handle, new_val as f32);
+    }
+
+    pub fn audio_property_change(&mut self, prop: AudioProperties)
+    {
+        for comp in &mut self.components {
+            comp.handle_audio_property_change(prop);
+        }
     }
 
     pub fn current_frequency(&self) -> Option<f32>
