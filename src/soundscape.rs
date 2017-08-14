@@ -7,8 +7,8 @@ use voice::Voice;
 /// for optimization
 /// though
 pub struct Soundscape<'a> {
-    // this would be an array, but arrays are so severely limited in rust that I'm using a vector.
-    // Don't ever resize it!
+    // this would be an array, but arrays are so severely limited in rust that
+    // I'm using a vector.  Don't ever resize it!
     // TODO make this not resizable
     voices: Vec<Voice<'a>>,
 }
@@ -58,10 +58,10 @@ impl<'a> Soundscape<'a> {
         }
     }
 
-    pub fn audio_property_change(&mut self, prop: AudioProperties)
+    pub fn handle_audio_property_change(&mut self, prop: AudioProperties)
     {
         for voice in &mut self.voices {
-            voice.audio_property_change(prop)
+            voice.handle_audio_property_change(prop)
         }
     }
 

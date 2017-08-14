@@ -4,17 +4,25 @@ version = "0.1.0"
 authors = ["David Zmick <dpzmick@gmail.com>"]
 
 [dependencies]
-clippy = {version = "*", optional = true} # what a mess
 easyjack = "0.1.2"
 enum_primitive = "0.1.1"
-time = "0.1"
 ketos = { version = "0.10", features = ["serde", "serde_derive"] }
 ketos_derive = "0.10"
+num = "0.1"
 serde = { version = "1.0" }
 serde_derive = { version = "1.0" }
+time = "0.1"
 
 [features]
 default = []
 
-[profile.release]
-debug = true
+# [profile.release]
+# debug = true
+
+[[bin]]
+name = "synth"
+path = "src/main.rs"
+
+[lib]
+name = "synth"
+path = "src/lib.rs"

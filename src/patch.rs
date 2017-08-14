@@ -1,18 +1,15 @@
 // try to keep all of the code needed to manage the entire ketos runtime
 // contained to this file, if possible
 
-use components::{Component, ComponentConfig};
-use voice::Voice;
+use components::ComponentConfig;
+use ports::PortName;
 
 use ketos;
 use ketos::ModuleLoader;
-use ports::PortName;
 
-use serde;
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-
 
 type Decoder<T> = Box<Fn(&T) -> Result<Box<ComponentConfig>, String>>;
 
@@ -29,7 +26,7 @@ impl<'a> KetosConfigInput<'a> {
         Box::new(|this: &KetosConfigInput| {
             T::from_value(this.value.clone())
                 .map(|v| Box::new(v) as Box<ComponentConfig>)
-                .map_err(|err| {
+                .map_err(|_err| {
                     "Component not a valid type".to_owned()
                 })
         })
@@ -38,11 +35,12 @@ impl<'a> KetosConfigInput<'a> {
     fn get_all_decoders(&self) -> Vec<Decoder<Self>>
     {
         use components::SineWaveOscillatorConfig;
-        use components::{OnOffConfig};
+        use components::SquareWaveOscillatorConfig;
+        use components::OnOffConfig;
 
         let mut decoders = Vec::new();
         decoders.push(self.make_decoder::<SineWaveOscillatorConfig>());
-        // decoders.push(self.make_decoder::<SquareWaveOscillatorConfig>());
+        decoders.push(self.make_decoder::<SquareWaveOscillatorConfig>());
         decoders.push(self.make_decoder::<OnOffConfig>());
         decoders
     }
@@ -50,10 +48,11 @@ impl<'a> KetosConfigInput<'a> {
     pub fn register_all_decoders(scope: &ketos::Scope)
     {
         use components::SineWaveOscillatorConfig;
-        use components::{OnOffConfig};
+        use components::SquareWaveOscillatorConfig;
+        use components::OnOffConfig;
 
         scope.register_struct_value::<SineWaveOscillatorConfig>();
-        // scope.register_struct_value::<SquareWaveOscillatorConfig>();
+        scope.register_struct_value::<SquareWaveOscillatorConfig>();
         scope.register_struct_value::<OnOffConfig>();
     }
 
@@ -143,7 +142,7 @@ impl Patch {
         }
 
         interp.scope().add_value_with_name("add-component", |name| {
-            ketos::value::Value::new_foreign_fn(name, move |scope, args| {
+            ketos::value::Value::new_foreign_fn(name, move |_scope, args| {
                 let expected = 2;
                 if args.len() != expected {
                     return Err(From::from(ketos::exec::ExecError::ArityError {

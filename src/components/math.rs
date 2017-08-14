@@ -16,7 +16,7 @@ impl<'a> fmt::Debug for Math<'a> {
     {
         write!(
             f, "Math {{ name: {:?}, function: [[opaque]], input: {:?}, output: {:?} }}",
-            self.name, self.input, self.output);
+            self.name, self.input, self.output)?;
 
         Ok(())
     }
@@ -42,11 +42,13 @@ impl<'a> Component<'a> for Math<'a> {
     fn initialize_ports(&mut self, ports: &mut PortManager<'a>)
         -> Result<(), PortManagerError>
     {
-        self.input = Some(ports.register_input_port(&PortName::new(&self.name, "input")).unwrap());
-        self.output = Some(ports.register_output_port(
-                &PortName::new(&self.name, "output")).unwrap());
+        self.input = Some(ports.register_input_port(
+                &PortName::new(&self.name, "input"))?);
 
-        Ok( () )
+        self.output = Some(ports.register_output_port(
+                &PortName::new(&self.name, "output"))?);
+
+        Ok(())
     }
 
     fn generate(&mut self, ports: &mut RealtimePortManager)

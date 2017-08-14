@@ -10,7 +10,7 @@ pub trait Component<'a>: fmt::Debug {
 
     /// Called with the audio system property that has changed
     /// A default noop implementation is provided
-    fn handle_audio_property_change(&mut self, props: AudioProperties) { }
+    fn handle_audio_property_change(&mut self, _props: AudioProperties) { }
 
     // port management
     fn initialize_ports(&mut self, ports: &mut PortManager<'a>)

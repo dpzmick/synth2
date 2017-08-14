@@ -200,7 +200,7 @@ pub trait PortManager<'a>: RealtimePortManager<'a> {
 
     /// Disconnect ports
     /// If two ports are already connected, this will remove the connection
-    /// between them If they are not connected, this will be a potentially
+    /// between them. If they are not connected, this will be a potentially
     /// expensive noop.
     /// It is impossible to request an invalid disconnection due to type safety
     fn disconnect(&mut self, p1: &OutputPortHandle, p2: &InputPortHandle);
@@ -208,16 +208,13 @@ pub trait PortManager<'a>: RealtimePortManager<'a> {
     fn connect_by_name(&mut self, p1: &PortName, p2: &PortName)
         -> Result<(), PortManagerError>;
 
-    fn get_connections(&self) -> Vec<(OutputPortHandle, InputPortHandle)>;
-
     fn find_port(&self, name: &PortName) -> Option<UnknownPortHandle<'a>>;
-    fn find_ports(&self, component: &str) -> Option<Vec<UnknownPortHandle<'a>>>;
 
     /// Returns a copy of the component adjacency matrix for this port manager
     /// and map from Component Name -> index in the matrix that was used when
     /// creating the matrix
     fn get_component_adjacency_matrix(&self)
-        -> (HashMap<usize, String>, util::nmat::NMat<bool, util::nmat::RowMajor>);
+        -> (HashMap<usize, String>, util::nmat::Matrix<bool, util::nmat::RowMajor>);
 }
 
 #[derive(Debug)]
@@ -387,41 +384,8 @@ impl<'a> PortManager<'a> for PortManagerImpl<'a> {
             .cloned()
     }
 
-    fn find_ports(&self, component: &str)
-        -> Option<Vec<UnknownPortHandle<'a>>>
-    {
-        self.ports_meta
-            .get(component)
-            .map(|comp| {
-                let mut res = Vec::new();
-                for handle in comp.values() {
-                    res.push(*handle)
-                }
-
-                res
-            })
-    }
-
-    fn get_connections(&self) -> Vec<(OutputPortHandle, InputPortHandle)>
-    {
-        let mut v = Vec::new();
-        for &(o, i) in &self.connections {
-            let e = (OutputPortHandle {
-                         id: o,
-                         phantom: PhantomData,
-                     },
-                     InputPortHandle {
-                         id: i,
-                         phantom: PhantomData,
-                     });
-            v.push(e);
-        }
-
-        v
-    }
-
     fn get_component_adjacency_matrix(&self)
-        -> (HashMap<usize, String>, util::nmat::NMat<bool, util::nmat::RowMajor>)
+        -> (HashMap<usize, String>, util::nmat::Matrix<bool, util::nmat::RowMajor>)
     {
 
         // map component name to matrix index
@@ -441,7 +405,7 @@ impl<'a> PortManager<'a> for PortManagerImpl<'a> {
         // each port maps to. Now we can create one node for each component and
         // set up the connections
         let n_components = self.ports_meta.len();
-        let mut adj = util::nmat::NMat::new(n_components);
+        let mut adj = util::nmat::Matrix::new((n_components, n_components));
 
         for &(first, second) in self.connections.iter() {
             let first_component_name = port_map.get(&first).unwrap();
@@ -586,47 +550,17 @@ fn test_find2()
 }
 
 #[test]
-fn test_find3()
-{
-    let mut manager = PortManagerImpl::new();
-    let port1 = manager
-        .register_input_port(&PortName::new("test", "out1"))
-        .unwrap();
-
-    let port2 = manager
-        .register_input_port(&PortName::new("test", "out2"))
-        .unwrap();
-
-    let ports = manager.find_ports("test");
-    assert!(ports.is_some());
-
-    let mut p1_found = false;
-    let mut p2_found = false;
-    for port in ports.unwrap().into_iter() {
-        if port == port1 {
-            p1_found = true;
-        }
-
-        if port == port2 {
-            p2_found = true;
-        }
-    }
-
-    assert!(p1_found);
-    assert!(p2_found);
-}
-
-#[test]
 fn test_bad_promote()
 {
     let p = PortName::new("test", "out");
     let mut manager = PortManagerImpl::new();
-    let port1 = manager.register_output_port(&p);
-    let also_port1 = manager.find_port(&p);
-    assert!(also_port1.is_some());
+    manager.register_output_port(&p).unwrap();
 
-    let also_port1 = also_port1.unwrap().promote_to_input();
-    assert!(also_port1.is_err());
+    let port1 = manager.find_port(&p);
+    assert!(port1.is_some());
+
+    let port1 = port1.unwrap().promote_to_input();
+    assert!(port1.is_err());
 }
 
 #[test]
@@ -655,10 +589,8 @@ fn test_connect_by_name_fail1()
     let out = PortName::new("test", "out");
 
     let mut manager = PortManagerImpl::new();
-    let port1 = manager.register_output_port(&out).unwrap();
-    let port2 = manager
-        .register_input_port(&PortName::new("test", "in"))
-        .unwrap();
+    manager.register_output_port(&out).unwrap();
+    manager.register_input_port(&PortName::new("test", "in")).unwrap();
 
     let bad = PortName::new("test", "dne");
     let connected = manager.connect_by_name(&out, &bad);
@@ -672,8 +604,9 @@ fn test_connect_by_name_fail2()
     let n2 = PortName::new("test", "in2");
 
     let mut manager = PortManagerImpl::new();
-    let port2 = manager.register_input_port(&n1).unwrap();
-    let port2 = manager.register_input_port(&n2).unwrap();
+    manager.register_input_port(&n1).unwrap();
+    manager.register_input_port(&n2).unwrap();
+
     let connected = manager.connect_by_name(&n1, &n2);
     assert!(connected.unwrap_err() == PortManagerError::NotOutputPort);
 }
@@ -685,8 +618,9 @@ fn test_connect_by_name_fail3()
     let n2 = PortName::new("test", "p2".to_string());
 
     let mut manager = PortManagerImpl::new();
-    let port2 = manager.register_output_port(&n1).unwrap();
-    let port2 = manager.register_output_port(&n2).unwrap();
+    manager.register_output_port(&n1).unwrap();
+    manager.register_output_port(&n2).unwrap();
+
     let connected = manager.connect_by_name(&n1, &n2);
     assert!(connected.unwrap_err() == PortManagerError::NotInputPort);
 }

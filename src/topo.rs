@@ -3,13 +3,16 @@ use util;
 use std::iter;
 use std::collections::VecDeque;
 
-type AdjacencyMatrix = util::nmat::NMat<bool, util::nmat::RowMajor>;
+type AdjacencyMatrix = util::nmat::Matrix<bool, util::nmat::RowMajor>;
 
 /// Remove back edges, if any, from the adjacent matrix, in place
 /// Assumes the graph is fully connected, starts traversal from node 0
 pub fn remove_back_edges(adj: &mut AdjacencyMatrix)
 {
-    let mut visited: Vec<bool> = iter::repeat(false).take(adj.n()).collect();
+    let (n, m) = adj.dim();
+    assert!(n == m);
+
+    let mut visited: Vec<bool> = iter::repeat(false).take(n).collect();
     let mut next = VecDeque::new();
 
     next.push_back(0);
@@ -19,7 +22,7 @@ pub fn remove_back_edges(adj: &mut AdjacencyMatrix)
         visited[i] = true;
 
         // TODO implement some nicer iterator?
-        for j in 0..adj.n() {
+        for j in 0..n {
             if adj[(i, j)] {
                 if visited[j] {
                     // this must be a back edge, remove it from the graph
@@ -40,11 +43,14 @@ fn insert_all_with_no_preds(
     next: &mut VecDeque<usize>,
     inserted: &mut Vec<bool>)
 {
+    let (n, m) = adj.dim();
+    assert!(n == m);
+
     // add any entries with no predecessors
-    for i in 0..adj.n() {
+    for i in 0..n {
         // TODO optimize with some better iterators or something
         let mut preds = false;
-        for j in 0..adj.n() {
+        for j in 0..n {
             preds |= adj[(j, i)];
         }
 
@@ -63,8 +69,13 @@ fn insert_all_with_no_preds(
 /// of executing the algorithm.
 pub fn topological_sort(adj: &mut AdjacencyMatrix) -> Vec<usize>
 {
+    let (n, m) = adj.dim();
+    assert!(n == m);
+
+    // TODO make NMat again
+
     let mut next = VecDeque::new();
-    let mut inserted = iter::repeat(false).take(adj.n()).collect();
+    let mut inserted = iter::repeat(false).take(n).collect();
     let mut ordering = Vec::new();
 
     insert_all_with_no_preds(adj, &mut next, &mut inserted);
@@ -75,7 +86,7 @@ pub fn topological_sort(adj: &mut AdjacencyMatrix) -> Vec<usize>
         ordering.push(i);
 
         // remove all outgoing edges for i
-        for j in 0..adj.n() {
+        for j in 0..n {
             adj[(i, j)] = false;
         }
 
@@ -93,7 +104,7 @@ mod test {
 
     #[test]
     fn test_rm_simple_edge() {
-        let mut adj: AdjacencyMatrix = util::nmat::NMat::new(2);
+        let mut adj: AdjacencyMatrix = util::nmat::Matrix::new((2, 2));
         // no self loops
         adj[(0, 0)] = false;
         adj[(1, 1)] = false;
@@ -113,7 +124,7 @@ mod test {
 
     #[test]
     fn test_multi_step_cycle() {
-        let mut adj: AdjacencyMatrix = util::nmat::NMat::new(3);
+        let mut adj: AdjacencyMatrix = util::nmat::Matrix::new((3, 3));
         // defaults to false everywhere
         // connect 0 -> 1, 1 -> 2, 2 -> 0
         adj[(0, 1)] = true;
@@ -131,7 +142,7 @@ mod test {
 
     #[test]
     fn test_self_loop() {
-        let mut adj: AdjacencyMatrix = util::nmat::NMat::new(2);
+        let mut adj: AdjacencyMatrix = util::nmat::Matrix::new((2, 2));
         // no self loops
         adj[(0, 0)] = true;
         adj[(1, 1)] = false;
@@ -151,7 +162,7 @@ mod test {
 
     #[test]
     fn simple_topo() {
-        let mut adj: AdjacencyMatrix = util::nmat::NMat::new(3);
+        let mut adj: AdjacencyMatrix = util::nmat::Matrix::new((3, 3));
         // default will be all false;
 
         adj[(0, 1)] = true;
@@ -165,7 +176,7 @@ mod test {
 
     #[test]
     fn interesting_topo() {
-        let mut adj: AdjacencyMatrix = util::nmat::NMat::new(5);
+        let mut adj: AdjacencyMatrix = util::nmat::Matrix::new((5, 5));
         // default will all be false
 
         adj[(0, 1)] = true;

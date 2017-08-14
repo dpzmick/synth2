@@ -1,39 +1,16 @@
-#![feature(conservative_impl_trait)]
+extern crate synth;
 
-extern crate serde;
-
-#[macro_use]
-extern crate enum_primitive;
-extern crate easyjack as jack;
-
-#[macro_use]
-extern crate ketos;
-
-#[macro_use]
-extern crate ketos_derive;
-
-mod audioprops;
-mod components;
-mod jack_engine;
-mod midi;
-mod patch;
-mod ports;
-mod soundscape;
-mod topo;
-mod util;
-mod voice;
-
-use jack_engine::run_audio_thread;
-use patch::Patch;
-use soundscape::Soundscape;
+use synth::jack_engine::run_audio_thread;
+use synth::patch::Patch;
+use synth::soundscape::Soundscape;
 
 use std::path::Path;
 
 fn main()
 {
     let patch = Patch::from_file(Path::new("patches/sine.patch")).unwrap();
-    let soundscape = Soundscape::new(1, patch);
-    run_audio_thread(soundscape);
+    let soundscape = Soundscape::new(16, patch);
+    let client = run_audio_thread(soundscape); // important to hold a reference to the client
 
     loop {
         use std::thread;

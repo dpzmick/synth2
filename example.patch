@@ -1,0 +1,5 @@
+(add-component "sin" builtin-sine)
+
+(connect
+    (get-port "voice" "midi_frequency_out")
+    (get-port "sin"   "midi_frequency_in"))

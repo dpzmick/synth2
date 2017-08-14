@@ -23,6 +23,7 @@ fn midi_velocity_to_velocity(vel: u8) -> f32
     vel as f32 / (std::u8::MAX as f32)
 }
 
+#[derive(Debug)]
 enum Message {
     AudioProperties(AudioProperties)
 }
@@ -56,9 +57,10 @@ impl<'a> AudioHandler<'a> {
     fn handle_incoming(&mut self)
     {
         while let Ok(m) = self.incoming.try_recv() {
+            println!("message: {:?}", m);
             match m {
                 Message::AudioProperties(p) =>
-                    self.soundscape.audio_property_change(p)
+                    self.soundscape.handle_audio_property_change(p)
             }
         }
     }
@@ -145,7 +147,7 @@ impl jack::MetadataHandler for MetadataHandler {
 }
 
 
-pub fn run_audio_thread(soundscape: Soundscape)
+pub fn run_audio_thread(soundscape: Soundscape) -> jack::Client
 {
     let mut c = jack::Client::open("sine", jack::options::NO_START_SERVER)
         .unwrap()
@@ -170,4 +172,5 @@ pub fn run_audio_thread(soundscape: Soundscape)
         .unwrap();
 
     // TODO make this some struct so I can shut down gracefully
+    c
 }
