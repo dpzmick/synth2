@@ -64,7 +64,6 @@ impl<T: Default + Clone> Matrix<T, ColumnMajor> {
     }
 }
 
-
 impl<T: Default + Clone, O: Ordering> Matrix<T, O> {
     pub fn new(dim: Dimension) -> Self
     {
@@ -142,7 +141,7 @@ where
     T1: PartialEq<T2>,
     // no bounds needed on T2
 {
-    fn eq(&self, other: &Matrix<T2, O2>) -> bool
+    default fn eq(&self, other: &Matrix<T2, O2>) -> bool
     {
         if self.dim() != other.dim() { return false; }
 
@@ -151,6 +150,30 @@ where
 
         for i in 0..r {
             for j in 0..c {
+                if self[(i,j)] != other[(i,j)] { return false; }
+            }
+        }
+
+        return true;
+    }
+}
+
+// specialized PartialEq for ColumMajor vs ColumMajor
+// requires nightly only #[feature(specialization)]
+// else fallback to the default implementation (row major)
+impl <T1, T2> PartialEq<Matrix<T2, ColumnMajor>> for Matrix<T1, ColumnMajor>
+where T1: PartialEq<T2>
+{
+    fn eq(&self, other: &Matrix<T2, ColumnMajor>) -> bool
+    {
+        println!("used the specialization");
+        if self.dim() != other.dim() { return false; }
+
+        let (r, c) = self.dim();
+
+        // go in colum major order instead
+        for j in 0..c {
+            for i in 0..r {
                 if self[(i,j)] != other[(i,j)] { return false; }
             }
         }
