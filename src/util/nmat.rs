@@ -48,6 +48,18 @@ impl<T, O: Ordering> Matrix<T, O> {
     pub fn dim(&self) -> (usize, usize) {
         self.dim
     }
+
+    pub unsafe fn get_unchecked(&self, c: Coordinate) -> &T
+    {
+        let idx = O::idx(self.dim(), c);
+        self.values.get_unchecked(idx)
+    }
+
+    pub unsafe fn get_unchecked_mut(&mut self, c: Coordinate) -> &mut T
+    {
+        let idx = O::idx(self.dim(), c);
+        self.values.get_unchecked_mut(idx)
+    }
 }
 
 impl<T: Default + Clone> Matrix<T, RowMajor> {
@@ -213,8 +225,21 @@ where
             for j in 0..p {
                 for k in 0..m1 {
                     // don't use AddAssign, not all types implement it
-                    output[(i,j)] = output[(i,j)].clone()
-                        + (self[(i,k)].clone() * rhs[(k,j)].clone())
+                    // use the get_unchecked to ensure that there are no bounds
+                    // checks performed. This does appear to actually make a
+                    // noticeable difference
+
+                    unsafe {
+                        let curr = output.get_unchecked((i,j)).clone();
+
+                        let product =
+                            self.get_unchecked((i,k)).clone()
+                            * rhs.get_unchecked((k,j)).clone();
+
+                        let sum = curr + product;
+
+                        *output.get_unchecked_mut((i,j)) = sum;
+                    }
                 }
             }
         }
