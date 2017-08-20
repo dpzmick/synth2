@@ -1,9 +1,11 @@
 #![feature(specialization)]
+#![feature(iterator_step_by)]
 #![feature(test)]
 extern crate test;
 
 extern crate num;
 extern crate serde;
+extern crate simd;
 
 #[macro_use]
 extern crate enum_primitive;

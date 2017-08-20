@@ -3,6 +3,8 @@ use std::ops::{Index, IndexMut, Mul, Add};
 use std::fmt;
 use std::fmt::Debug;
 
+use simd;
+
 type Dimension = (usize, usize);
 type Coordinate = (usize, usize);
 
@@ -45,7 +47,8 @@ pub struct Matrix<T, O: Ordering> {
 }
 
 impl<T, O: Ordering> Matrix<T, O> {
-    pub fn dim(&self) -> (usize, usize) {
+    pub fn dim(&self) -> (usize, usize)
+    {
         self.dim
     }
 
@@ -95,6 +98,105 @@ impl<T: Clone, O: Ordering> Matrix<T, O> {
             values: vec![default; dim.0*dim.1],
             ordering: PhantomData,
         }
+    }
+}
+
+trait Simd4x: Sized + Clone + Default + Add<Output=Self> + Mul<Output=Self> {
+    type SimdType: simd::Simd + Copy;
+
+    fn load(values: &[Self], starting_idx: usize) -> Self::SimdType;
+    fn extract(this: Self::SimdType, idx: u32) -> Self;
+    fn mul(this: Self::SimdType, rhs: Self::SimdType) -> Self::SimdType;
+}
+
+// TODO figure out how to switch different simd fields on and off depending on
+// cpu features. Ideally this would toggle on and off different multiply methods
+// depending on the platform
+
+impl Simd4x for f32 {
+    type SimdType = simd::f32x4;
+
+    fn load(values: &[Self], starting_idx: usize) -> Self::SimdType
+    {
+        Self::SimdType::load(values, starting_idx)
+    }
+
+    fn extract(this: Self::SimdType, idx: u32) -> Self
+    {
+        this.extract(idx)
+    }
+
+    fn mul(this: Self::SimdType, rhs: Self::SimdType) -> Self::SimdType
+    {
+        this * rhs
+    }
+}
+
+impl Simd4x for i32 {
+    type SimdType = simd::i32x4;
+
+    fn load(values: &[Self], starting_idx: usize) -> Self::SimdType
+    {
+        Self::SimdType::load(values, starting_idx)
+    }
+
+    fn extract(this: Self::SimdType, idx: u32) -> Self
+    {
+        this.extract(idx)
+    }
+
+    fn mul(this: Self::SimdType, rhs: Self::SimdType) -> Self::SimdType
+    {
+        this * rhs
+    }
+}
+
+impl<SimdType: simd::Simd + Copy, T: Simd4x<SimdType=SimdType>> Matrix<T, RowMajor>
+{
+
+    pub fn vector_mul_4x(&self, rhs: &Matrix<T, ColumnMajor>)
+        -> Matrix<T, RowMajor>
+    {
+        let (n, m1) = self.dim();
+        let (m2, p) = rhs.dim();
+
+        //println!("doing it the vector way");
+
+        assert!(m1 == m2);
+
+        let mut output: Matrix<T, RowMajor> = Matrix::new((n, p));
+
+        for i in 0..n {
+            for j in 0..p {
+                for k in (0..m1).step_by(4) {
+                    unsafe {
+                        let curr = output.get_unchecked((i,j)).clone();
+
+                        let vector1 = <T as Simd4x>::load(
+                            &self.values, RowMajor::idx(output.dim(), (i,k)));
+
+                        let vector2 = <T as Simd4x>::load(
+                            &rhs.values, ColumnMajor::idx(output.dim(), (k,j)));
+
+                        let products = <T as Simd4x>::mul(vector1, vector2);
+                        let mut sum = T::default();
+
+                        // TODO there should be an intrinsic for this
+                        // why is the simd crate so bad?
+                        for i in 0..4 {
+                            // don't use AddAssign, adds another trait bound
+                            sum = sum + <T as Simd4x>::extract(products, i);
+                        }
+
+                        *output.get_unchecked_mut((i,j)) = curr + sum;
+                    }
+                }
+            }
+        }
+
+        // TODO fixup non powers of two
+
+        output
     }
 }
 
@@ -178,7 +280,7 @@ where T1: PartialEq<T2>
 {
     fn eq(&self, other: &Matrix<T2, ColumnMajor>) -> bool
     {
-        println!("used the specialization");
+        //println!("used the specialization");
         if self.dim() != other.dim() { return false; }
 
         let (r, c) = self.dim();
@@ -194,6 +296,11 @@ where T1: PartialEq<T2>
     }
 }
 
+// TODO vectorized eq?
+// TODO eq method for doubles that includes some epsilon?
+// TODO iterators might save the day on some of these funkier methods
+// TODO faster multiplies for other ordering pairs
+
 impl<'a, 'b, T1, T2, O1: Ordering, O2: Ordering>
     Mul<&'b Matrix<T2, O2>> for &'a Matrix<T1, O1>
 where
@@ -207,14 +314,12 @@ where
         , RowMajor>;
 
     // self is a &'a
-    fn mul(self, rhs: &'b Matrix<T2, O2>) -> Self::Output
+    default fn mul(self, rhs: &'b Matrix<T2, O2>) -> Self::Output
     {
         let (n, m1) = self.dim();
         let (m2, p) = rhs.dim();
 
-        // can't put dimension in the type without the ability to perform
-        // arbitrary arithmetic on it. As we can see, generics are already much
-        // too painful
+        // TODO panic better
         assert!(m1 == m2);
 
         // TODO evaluate removing the Default requirement
@@ -245,6 +350,15 @@ where
         }
 
         output
+    }
+}
+
+// if the type supports 4x vectorization, use the 4x vector multiply
+impl<'a, 'b, T: Simd4x> Mul<&'b Matrix<T, ColumnMajor>> for &'a Matrix<T, RowMajor>
+{
+    fn mul(self, rhs: &'b Matrix<T, ColumnMajor>) -> Self::Output
+    {
+        self.vector_mul_4x(rhs)
     }
 }
 
@@ -283,6 +397,9 @@ where
     }
 }
 
+// TODO move all of the logic out of the trait impls, then just call the better
+// named functions (eg. naive_multiply, vector_eq, naive_eq, etc)
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -296,6 +413,19 @@ mod test {
         for i in 0..m.dim().0 {
             for j in 0..m.dim().1 {
                 m[(i,j)] = (i + j) as i64;
+            }
+        }
+
+        m
+    }
+
+    fn make_big_matrix_f32<O: Ordering>() -> Matrix<f32, O>
+    {
+        // I have an 8 meg cache, 512x512 is larger than the entire cache
+        let mut m = Matrix::<f32, O>::new((512, 512));
+        for i in 0..m.dim().0 {
+            for j in 0..m.dim().1 {
+                m[(i,j)] = (i + j) as f32;
             }
         }
 
@@ -517,6 +647,15 @@ mod test {
     {
         let a = make_big_matrix::<RowMajor>();
         let b = make_big_matrix::<ColumnMajor>();
+
+        bench.iter(|| &a * &b);
+    }
+
+    #[bench]
+    fn vector_multiply_f32(bench: &mut Bencher) -> ()
+    {
+        let a = make_big_matrix_f32::<RowMajor>();
+        let b = make_big_matrix_f32::<ColumnMajor>();
 
         bench.iter(|| &a * &b);
     }
