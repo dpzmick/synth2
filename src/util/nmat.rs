@@ -101,103 +101,92 @@ impl<T: Clone, O: Ordering> Matrix<T, O> {
     }
 }
 
-trait Simd4x: Sized + Clone + Default + Add<Output=Self> + Mul<Output=Self> {
-    type SimdType: simd::Simd + Copy;
+macro_rules! simd_mul_impl {
+    ($name:ident, $vec:ty, $increment:expr, $underlying:ty) => {
+        fn $name(&self, rhs: &Matrix<$underlying, ColumnMajor>)
+            -> Matrix<$underlying, RowMajor>
+        {
+            let (n, m1) = self.dim();
+            let (m2, p) = rhs.dim();
+            assert!(m1 == m2);
 
-    fn load(values: &[Self], starting_idx: usize) -> Self::SimdType;
-    fn extract(this: Self::SimdType, idx: u32) -> Self;
-    fn mul(this: Self::SimdType, rhs: Self::SimdType) -> Self::SimdType;
-}
+            //println!("doing it the {}x vector way", $increment);
 
-// TODO figure out how to switch different simd fields on and off depending on
-// cpu features. Ideally this would toggle on and off different multiply methods
-// depending on the platform
+            let mut output: Matrix<$underlying, RowMajor> = Matrix::new((n, p));
 
-impl Simd4x for f32 {
-    type SimdType = simd::f32x4;
+            for i in 0..n {
+                for j in 0..p {
+                    for k in (0..m1).step_by($increment) {
+                        unsafe {
+                            let curr = output.get_unchecked((i,j)).clone();
 
-    fn load(values: &[Self], starting_idx: usize) -> Self::SimdType
-    {
-        Self::SimdType::load(values, starting_idx)
-    }
+                            let vector1 = <$vec>::load(
+                                &self.values, RowMajor::idx(output.dim(), (i,k)));
 
-    fn extract(this: Self::SimdType, idx: u32) -> Self
-    {
-        this.extract(idx)
-    }
+                            let vector2 = <$vec>::load(
+                                &rhs.values, ColumnMajor::idx(output.dim(), (k,j)));
 
-    fn mul(this: Self::SimdType, rhs: Self::SimdType) -> Self::SimdType
-    {
-        this * rhs
-    }
-}
+                            let products = vector1 * vector2;
+                            let mut sum = <$underlying as Default>::default();
 
-impl Simd4x for i32 {
-    type SimdType = simd::i32x4;
+                            // TODO there should be an intrinsic for this
+                            for i in 0..($increment) {
+                                // don't use AddAssign, adds another trait bound
+                                sum = sum + products.extract(i);
+                            }
 
-    fn load(values: &[Self], starting_idx: usize) -> Self::SimdType
-    {
-        Self::SimdType::load(values, starting_idx)
-    }
-
-    fn extract(this: Self::SimdType, idx: u32) -> Self
-    {
-        this.extract(idx)
-    }
-
-    fn mul(this: Self::SimdType, rhs: Self::SimdType) -> Self::SimdType
-    {
-        this * rhs
-    }
-}
-
-impl<SimdType: simd::Simd + Copy, T: Simd4x<SimdType=SimdType>> Matrix<T, RowMajor>
-{
-
-    pub fn vector_mul_4x(&self, rhs: &Matrix<T, ColumnMajor>)
-        -> Matrix<T, RowMajor>
-    {
-        let (n, m1) = self.dim();
-        let (m2, p) = rhs.dim();
-
-        //println!("doing it the vector way");
-
-        assert!(m1 == m2);
-
-        let mut output: Matrix<T, RowMajor> = Matrix::new((n, p));
-
-        for i in 0..n {
-            for j in 0..p {
-                for k in (0..m1).step_by(4) {
-                    unsafe {
-                        let curr = output.get_unchecked((i,j)).clone();
-
-                        let vector1 = <T as Simd4x>::load(
-                            &self.values, RowMajor::idx(output.dim(), (i,k)));
-
-                        let vector2 = <T as Simd4x>::load(
-                            &rhs.values, ColumnMajor::idx(output.dim(), (k,j)));
-
-                        let products = <T as Simd4x>::mul(vector1, vector2);
-                        let mut sum = T::default();
-
-                        // TODO there should be an intrinsic for this
-                        // why is the simd crate so bad?
-                        for i in 0..4 {
-                            // don't use AddAssign, adds another trait bound
-                            sum = sum + <T as Simd4x>::extract(products, i);
+                            *output.get_unchecked_mut((i,j)) = curr + sum;
                         }
-
-                        *output.get_unchecked_mut((i,j)) = curr + sum;
                     }
                 }
             }
+
+            // TODO handle non multiple
+
+            output
         }
-
-        // TODO fixup non powers of two
-
-        output
     }
+}
+
+// TODO it is difficult (impossible?) to use specialization to solve this
+// problem. We can't specialize over types that support various sized simd
+// extensions easily
+// I need a way to say "give me the largest supported vector type for the
+// current platform" then get the step I need
+// There are two problems:
+// 1) Any overload to Mul must actually be more specific than any other one (it
+//    can't pick the "best" vector type to use when multiple exist)
+//
+// 2) We need to be able to turn different vector types on and off for a given
+//    platform
+
+#[cfg(target_feature = "avx")]
+use simd::x86::avx;
+
+impl Matrix<f32, RowMajor> {
+    #[cfg(not(target_feature = "avx"))]
+    simd_mul_impl!(vector_mul_f32, simd::f32x4, 4, f32);
+
+    #[cfg(target_feature = "avx")]
+    simd_mul_impl!(vector_mul_f32, avx::f32x8, 8, f32);
+}
+
+impl Matrix<f64, RowMajor> {
+    #[cfg(target_feature = "avx")]
+    simd_mul_impl!(vector_mul_f64, avx::f64x4, 4, f64);
+}
+
+impl Matrix<i32, RowMajor> {
+    #[cfg(not(target_feature = "avx"))]
+    simd_mul_impl!(vector_mul_i32, simd::i32x4, 4, i32);
+
+    #[cfg(target_feature = "avx")]
+    simd_mul_impl!(vector_mul_i32, avx::i32x8, 8, i32);
+}
+
+impl Matrix<i64, RowMajor> {
+    #[cfg(target_feature = "avx")]
+    simd_mul_impl!(vector_mul_i64, avx::i64x4, 4, i64);
 }
 
 // TODO make mat[][] work?
@@ -353,16 +342,39 @@ where
     }
 }
 
-// if the type supports 4x vectorization, use the 4x vector multiply
-impl<'a, 'b, T: Simd4x> Mul<&'b Matrix<T, ColumnMajor>> for &'a Matrix<T, RowMajor>
+impl<'a, 'b> Mul<&'b Matrix<f32, ColumnMajor>> for &'a Matrix<f32, RowMajor>
 {
-    fn mul(self, rhs: &'b Matrix<T, ColumnMajor>) -> Self::Output
+    fn mul(self, rhs: &'b Matrix<f32, ColumnMajor>) -> Self::Output
     {
-        self.vector_mul_4x(rhs)
+        self.vector_mul_f32(rhs)
     }
 }
 
-// TODO find a way to reduce all of the types needed in the overrides
+#[cfg(target_feature = "avx")]
+impl<'a, 'b> Mul<&'b Matrix<f64, ColumnMajor>> for &'a Matrix<f64, RowMajor>
+{
+    fn mul(self, rhs: &'b Matrix<f64, ColumnMajor>) -> Self::Output
+    {
+        self.vector_mul_f64(rhs)
+    }
+}
+
+impl<'a, 'b> Mul<&'b Matrix<i32, ColumnMajor>> for &'a Matrix<i32, RowMajor>
+{
+    fn mul(self, rhs: &'b Matrix<i32, ColumnMajor>) -> Self::Output
+    {
+        self.vector_mul_i32(rhs)
+    }
+}
+
+#[cfg(target_feature = "avx")]
+impl<'a, 'b> Mul<&'b Matrix<i64, ColumnMajor>> for &'a Matrix<i64, RowMajor>
+{
+    fn mul(self, rhs: &'b Matrix<i64, ColumnMajor>) -> Self::Output
+    {
+        self.vector_mul_i64(rhs)
+    }
+}
 
 impl<'a, T1, T2, O1: Ordering, O2: Ordering>
     Mul<&'a Matrix<T2, O2>> for Matrix<T1, O1>

@@ -1,5 +1,6 @@
 #![feature(specialization)]
 #![feature(iterator_step_by)]
+#![feature(cfg_target_feature)]
 #![feature(test)]
 extern crate test;
 

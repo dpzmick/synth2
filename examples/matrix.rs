@@ -4,14 +4,16 @@ use synth::util::nmat::*;
 
 const SIZE: usize = 512;
 
+type MT = f32;
+
 #[inline(never)]
-fn make_big_matrix<O: Ordering>() -> Matrix<i32, O>
+fn make_big_matrix<O: Ordering>() -> Matrix<MT, O>
 {
     // I have an 8 meg cache, 512x512 is larger than the entire cache
-    let mut m = Matrix::<i32, O>::new((SIZE, SIZE));
+    let mut m = Matrix::<MT, O>::new((SIZE, SIZE));
     for i in 0..m.dim().0 {
         for j in 0..m.dim().1 {
-            m[(i,j)] = (i + j) as i32;
+            m[(i,j)] = (i + j) as MT;
         }
     }
 
