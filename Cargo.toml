@@ -17,8 +17,8 @@ time = "0.1"
 [features]
 default = []
 
-# [profile.release]
-# debug = true
+[profile.release]
+debug = true
 
 [[bin]]
 name = "synth"

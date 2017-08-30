@@ -4,7 +4,7 @@ use synth::util::nmat::*;
 
 const SIZE: usize = 512;
 
-type MT = f32;
+type MT = i64;
 
 #[inline(never)]
 fn make_big_matrix<O: Ordering>() -> Matrix<MT, O>

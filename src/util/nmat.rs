@@ -3,7 +3,7 @@ use std::ops::{Index, IndexMut, Mul, Add};
 use std::fmt;
 use std::fmt::Debug;
 
-use simd;
+use util::vector::Vectorizable;
 
 type Dimension = (usize, usize);
 type Coordinate = (usize, usize);
@@ -101,92 +101,48 @@ impl<T: Clone, O: Ordering> Matrix<T, O> {
     }
 }
 
-macro_rules! simd_mul_impl {
-    ($name:ident, $vec:ty, $increment:expr, $underlying:ty) => {
-        fn $name(&self, rhs: &Matrix<$underlying, ColumnMajor>)
-            -> Matrix<$underlying, RowMajor>
-        {
-            let (n, m1) = self.dim();
-            let (m2, p) = rhs.dim();
-            assert!(m1 == m2);
+impl<T: Vectorizable> Matrix<T, RowMajor> {
+    fn vector_mult(&self, rhs: &Matrix<T, ColumnMajor>) -> Matrix<T, RowMajor>
+    {
+        let (n, m1) = self.dim();
+        let (m2, p) = rhs.dim();
+        assert!(m1 == m2);
 
-            //println!("doing it the {}x vector way", $increment);
+        //println!("doing it the {}x vector way", T::vector_size());
 
-            let mut output: Matrix<$underlying, RowMajor> = Matrix::new((n, p));
+        let mut output: Matrix<T, RowMajor> = Matrix::new((n, p));
 
-            for i in 0..n {
-                for j in 0..p {
-                    for k in (0..m1).step_by($increment) {
-                        unsafe {
-                            let curr = output.get_unchecked((i,j)).clone();
+        for i in 0..n {
+            for j in 0..p {
+                for k in (0..m1).step_by(T::vector_size()) {
+                    unsafe {
+                        let curr = output.get_unchecked((i,j)).clone();
 
-                            let vector1 = <$vec>::load(
-                                &self.values, RowMajor::idx(output.dim(), (i,k)));
+                        let vector1 = T::load(
+                            &self.values, RowMajor::idx(output.dim(), (i,k)));
 
-                            let vector2 = <$vec>::load(
-                                &rhs.values, ColumnMajor::idx(output.dim(), (k,j)));
+                        let vector2 = T::load(
+                            &rhs.values, ColumnMajor::idx(output.dim(), (k,j)));
 
-                            let products = vector1 * vector2;
-                            let mut sum = <$underlying as Default>::default();
+                        let products = vector1 * vector2;
+                        let mut sum = T::default();
 
-                            // TODO there should be an intrinsic for this
-                            for i in 0..($increment) {
-                                // don't use AddAssign, adds another trait bound
-                                sum = sum + products.extract(i);
-                            }
-
-                            *output.get_unchecked_mut((i,j)) = curr + sum;
+                        // TODO there should be an intrinsic for this
+                        for i in 0..T::vector_size() {
+                            // don't use AddAssign, adds another trait bound
+                            sum = sum + T::extract(&products, i as u32);
                         }
+
+                        *output.get_unchecked_mut((i,j)) = curr + sum;
                     }
                 }
             }
-
-            // TODO handle non multiple
-
-            output
         }
+
+        // TODO handle non multiple
+
+        output
     }
-}
-
-// TODO it is difficult (impossible?) to use specialization to solve this
-// problem. We can't specialize over types that support various sized simd
-// extensions easily
-// I need a way to say "give me the largest supported vector type for the
-// current platform" then get the step I need
-// There are two problems:
-// 1) Any overload to Mul must actually be more specific than any other one (it
-//    can't pick the "best" vector type to use when multiple exist)
-//
-// 2) We need to be able to turn different vector types on and off for a given
-//    platform
-
-#[cfg(target_feature = "avx")]
-use simd::x86::avx;
-
-impl Matrix<f32, RowMajor> {
-    #[cfg(not(target_feature = "avx"))]
-    simd_mul_impl!(vector_mul_f32, simd::f32x4, 4, f32);
-
-    #[cfg(target_feature = "avx")]
-    simd_mul_impl!(vector_mul_f32, avx::f32x8, 8, f32);
-}
-
-impl Matrix<f64, RowMajor> {
-    #[cfg(target_feature = "avx")]
-    simd_mul_impl!(vector_mul_f64, avx::f64x4, 4, f64);
-}
-
-impl Matrix<i32, RowMajor> {
-    #[cfg(not(target_feature = "avx"))]
-    simd_mul_impl!(vector_mul_i32, simd::i32x4, 4, i32);
-
-    #[cfg(target_feature = "avx")]
-    simd_mul_impl!(vector_mul_i32, avx::i32x8, 8, i32);
-}
-
-impl Matrix<i64, RowMajor> {
-    #[cfg(target_feature = "avx")]
-    simd_mul_impl!(vector_mul_i64, avx::i64x4, 4, i64);
 }
 
 // TODO make mat[][] work?
@@ -274,7 +230,7 @@ where T1: PartialEq<T2>
 
         let (r, c) = self.dim();
 
-        // go in colum major order instead
+        // go in column major order instead
         for j in 0..c {
             for i in 0..r {
                 if self[(i,j)] != other[(i,j)] { return false; }
@@ -342,37 +298,11 @@ where
     }
 }
 
-impl<'a, 'b> Mul<&'b Matrix<f32, ColumnMajor>> for &'a Matrix<f32, RowMajor>
+impl<'a, 'b, T: Vectorizable> Mul<&'b Matrix<T, ColumnMajor>> for &'a Matrix<T, RowMajor>
 {
-    fn mul(self, rhs: &'b Matrix<f32, ColumnMajor>) -> Self::Output
+    fn mul(self, rhs: &'b Matrix<T, ColumnMajor>) -> Self::Output
     {
-        self.vector_mul_f32(rhs)
-    }
-}
-
-#[cfg(target_feature = "avx")]
-impl<'a, 'b> Mul<&'b Matrix<f64, ColumnMajor>> for &'a Matrix<f64, RowMajor>
-{
-    fn mul(self, rhs: &'b Matrix<f64, ColumnMajor>) -> Self::Output
-    {
-        self.vector_mul_f64(rhs)
-    }
-}
-
-impl<'a, 'b> Mul<&'b Matrix<i32, ColumnMajor>> for &'a Matrix<i32, RowMajor>
-{
-    fn mul(self, rhs: &'b Matrix<i32, ColumnMajor>) -> Self::Output
-    {
-        self.vector_mul_i32(rhs)
-    }
-}
-
-#[cfg(target_feature = "avx")]
-impl<'a, 'b> Mul<&'b Matrix<i64, ColumnMajor>> for &'a Matrix<i64, RowMajor>
-{
-    fn mul(self, rhs: &'b Matrix<i64, ColumnMajor>) -> Self::Output
-    {
-        self.vector_mul_i64(rhs)
+        self.vector_mult(rhs)
     }
 }
 
@@ -511,7 +441,7 @@ mod test {
         expected[(1,0)] = 2;
         expected[(1,1)] = 6;
 
-        assert_eq!(m3, expected); // TODO
+        assert_eq!(m3, expected);
     }
 
     #[test]
@@ -541,7 +471,6 @@ mod test {
 
         assert_eq!(m3.dim(), (1,1));
         assert_eq!(m3[(0, 0)], a*x + b*y);
-        // TODO what should the ordering of m3 be?
     }
 
     #[test]
@@ -578,7 +507,6 @@ mod test {
         expected[(1,1)] = b*y;
 
         assert_eq!(m3, expected);
-        // TODO what should the ordering of m3 be?
     }
 
     #[test]
