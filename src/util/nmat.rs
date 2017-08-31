@@ -114,7 +114,8 @@ impl<T: Vectorizable> Matrix<T, RowMajor> {
 
         for i in 0..n {
             for j in 0..p {
-                for k in (0..m1).step_by(T::vector_size()) {
+                let end = if m1 > T::vector_size() { m1 } else { 0 };
+                for k in (0..end).step_by(T::vector_size()) {
                     unsafe {
                         let curr = output.get_unchecked((i,j)).clone();
 
@@ -136,10 +137,20 @@ impl<T: Vectorizable> Matrix<T, RowMajor> {
                         *output.get_unchecked_mut((i,j)) = curr + sum;
                     }
                 }
+
+                // fill in whatever doesn't fit in the vector
+                let end = (0..m1).step_by(T::vector_size()).last().unwrap_or(0);
+                for k in end..m1 {
+                    unsafe {
+                        let curr = output.get_unchecked((i,j)).clone();
+                        let product = self.get_unchecked((i,k)).clone()
+                            * rhs.get_unchecked((k,j)).clone();
+                        let sum = curr + product;
+                        *output.get_unchecked_mut((i, j)) = sum;
+                    }
+                }
             }
         }
-
-        // TODO handle non multiple
 
         output
     }
@@ -343,15 +354,11 @@ where
 // named functions (eg. naive_multiply, vector_eq, naive_eq, etc)
 
 #[cfg(test)]
-mod test {
+mod tests {
     use super::*;
-    use test;
-    use test::Bencher;
     use std::convert;
 
-    use util::vector::FakeValue;
-
-    fn make_big_matrix<T: convert::From<u16> + Default + Clone, O: Ordering>() -> Matrix<T, O>
+    pub fn make_big_matrix<T: convert::From<u16> + Default + Clone, O: Ordering>() -> Matrix<T, O>
     {
         // I have an 8 meg cache, 512x512 is larger than the entire cache
         let mut m = Matrix::<T, O>::new((512, 512));
@@ -366,7 +373,7 @@ mod test {
         m
     }
 
-    fn test_simple_matrix_impl<O: Ordering>()
+    pub fn test_simple_matrix_impl<O: Ordering>()
     {
         let mut mat: Matrix<i64, O> = Matrix::new((4, 4));
         mat[(0,0)] = 1;
@@ -387,7 +394,7 @@ mod test {
         test_simple_matrix_impl::<ColumnMajor>();
     }
 
-    fn test_eq_impl<O1: Ordering, O2: Ordering>()
+    pub fn test_eq_impl<O1: Ordering, O2: Ordering>()
     {
         let mut m1: Matrix<i64, O1> = Matrix::new((2, 2));
         let mut m2: Matrix<i64, O2> = Matrix::new((2, 2));
@@ -411,7 +418,7 @@ mod test {
         test_eq_impl::<ColumnMajor, ColumnMajor>();
     }
 
-    fn test_square_mul_impl<O1: Ordering, O2: Ordering>()
+    pub fn test_square_mul_impl<O1: Ordering, O2: Ordering>()
     {
         let mut m1: Matrix<i64, O1> = Matrix::new((2, 2));
         let mut m2: Matrix<i64, O2> = Matrix::new((2, 2));
@@ -445,7 +452,7 @@ mod test {
         test_square_mul_impl::<ColumnMajor, ColumnMajor>();
     }
 
-    fn test_vector_mul1_impl<O1: Ordering, O2: Ordering>()
+    pub fn test_vector_mul1_impl<O1: Ordering, O2: Ordering>()
     {
         let (a, b) = (2, 1);
         let (x, y) = (0, 1);
@@ -474,7 +481,7 @@ mod test {
         test_vector_mul1_impl::<ColumnMajor, ColumnMajor>();
     }
 
-    fn test_vector_mul2_impl<O1: Ordering, O2: Ordering>()
+    pub fn test_vector_mul2_impl<O1: Ordering, O2: Ordering>()
     {
         let (a, b) = (2, 1);
         let (x, y) = (0, 1);
@@ -510,7 +517,7 @@ mod test {
         test_vector_mul2_impl::<ColumnMajor, ColumnMajor>();
     }
 
-    fn add_all_rm<O: Ordering>(m: &Matrix<i64, O>) -> i64
+    pub fn add_all_rm<O: Ordering>(m: &Matrix<i64, O>) -> i64
     {
         // iterate in RowMajor order
         let mut sum = 0;
@@ -523,7 +530,7 @@ mod test {
         sum
     }
 
-    fn add_all_cm<O: Ordering>(m: &Matrix<i64, O>) -> i64
+    pub fn add_all_cm<O: Ordering>(m: &Matrix<i64, O>) -> i64
     {
         // iterate in ColumnMajor order
         let mut sum = 0;
@@ -535,6 +542,19 @@ mod test {
 
         sum
     }
+
+}
+
+#[cfg(all(feature = "benchmarks", test))]
+mod benchmarks {
+    use super::*;
+    use super::tests::*;
+
+    use test;
+    use test::Bencher;
+    use std::convert;
+
+    use util::vector::FakeValue;
 
     #[bench]
     fn fast_add_all1(bench: &mut Bencher) -> ()
@@ -619,6 +639,8 @@ mod test {
 
         assert!(slow > 3.0 * fast);
         // TODO there has to be a better way to express these performance tests
+        // - use a different benchmarks lib perhaps. This one doesn't give
+        //   nearly enough insight into what's going on
         // TODO write a better multiply so this test is no longer true
     }
 

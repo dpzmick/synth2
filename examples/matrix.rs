@@ -5,7 +5,7 @@ use synth::util::vector::FakeValue;
 
 const SIZE: usize = 512;
 
-type MT = FakeValue<i64>;
+type MT = f64;
 
 #[inline(never)]
 fn make_big_matrix<O: Ordering>() -> Matrix<MT, O>
@@ -21,12 +21,18 @@ fn make_big_matrix<O: Ordering>() -> Matrix<MT, O>
     m
 }
 
+#[inline(never)]
+fn mul(a: Matrix<MT, RowMajor>, b: Matrix<MT, ColumnMajor>) -> Matrix<MT, RowMajor>
+{
+    a * b
+}
+
 fn main()
 {
     // test to see if this gets vectorized
     let m1 = make_big_matrix::<RowMajor>();
     let m2 = make_big_matrix::<ColumnMajor>();
 
-    let m3 = m1 * m2;
+    let m3 = mul(m1, m2);
     println!("m3[0,0] = {:?}", m3[(0,0)]);
 }
