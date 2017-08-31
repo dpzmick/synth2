@@ -46,25 +46,6 @@ pub struct Matrix<T, O: Ordering> {
     ordering: PhantomData<O>
 }
 
-impl<T, O: Ordering> Matrix<T, O> {
-    pub fn dim(&self) -> (usize, usize)
-    {
-        self.dim
-    }
-
-    pub unsafe fn get_unchecked(&self, c: Coordinate) -> &T
-    {
-        let idx = O::idx(self.dim(), c);
-        self.values.get_unchecked(idx)
-    }
-
-    pub unsafe fn get_unchecked_mut(&mut self, c: Coordinate) -> &mut T
-    {
-        let idx = O::idx(self.dim(), c);
-        self.values.get_unchecked_mut(idx)
-    }
-}
-
 impl<T: Default + Clone> Matrix<T, RowMajor> {
     pub fn new_row_major(dim: Dimension) -> Self
     {
@@ -98,6 +79,25 @@ impl<T: Clone, O: Ordering> Matrix<T, O> {
             values: vec![default; dim.0*dim.1],
             ordering: PhantomData,
         }
+    }
+}
+
+impl<T, O: Ordering> Matrix<T, O> {
+    pub fn dim(&self) -> (usize, usize)
+    {
+        self.dim
+    }
+
+    pub unsafe fn get_unchecked(&self, c: Coordinate) -> &T
+    {
+        let idx = O::idx(self.dim(), c);
+        self.values.get_unchecked(idx)
+    }
+
+    pub unsafe fn get_unchecked_mut(&mut self, c: Coordinate) -> &mut T
+    {
+        let idx = O::idx(self.dim(), c);
+        self.values.get_unchecked_mut(idx)
     }
 }
 
@@ -347,27 +347,19 @@ mod test {
     use super::*;
     use test;
     use test::Bencher;
+    use std::convert;
 
-    fn make_big_matrix<O: Ordering>() -> Matrix<i64, O>
+    use util::vector::FakeValue;
+
+    fn make_big_matrix<T: convert::From<u16> + Default + Clone, O: Ordering>() -> Matrix<T, O>
     {
         // I have an 8 meg cache, 512x512 is larger than the entire cache
-        let mut m = Matrix::<i64, O>::new((512, 512));
+        let mut m = Matrix::<T, O>::new((512, 512));
         for i in 0..m.dim().0 {
             for j in 0..m.dim().1 {
-                m[(i,j)] = (i + j) as i64;
-            }
-        }
-
-        m
-    }
-
-    fn make_big_matrix_f32<O: Ordering>() -> Matrix<f32, O>
-    {
-        // I have an 8 meg cache, 512x512 is larger than the entire cache
-        let mut m = Matrix::<f32, O>::new((512, 512));
-        for i in 0..m.dim().0 {
-            for j in 0..m.dim().1 {
-                m[(i,j)] = (i + j) as f32;
+                // largest value is m.dim().0 + m.dim().1 (512 + 512) = 1024
+                // need 10 bits
+                m[(i,j)] = ((i + j) as u16).into();
             }
         }
 
@@ -547,28 +539,28 @@ mod test {
     #[bench]
     fn fast_add_all1(bench: &mut Bencher) -> ()
     {
-        let m = make_big_matrix::<RowMajor>();
+        let m = make_big_matrix::<i64, RowMajor>();
         bench.iter(|| test::black_box(add_all_rm(&m)));
     }
 
     #[bench]
     fn fast_add_all2(bench: &mut Bencher) -> ()
     {
-        let m = make_big_matrix::<ColumnMajor>();
+        let m = make_big_matrix::<i64, ColumnMajor>();
         bench.iter(|| test::black_box(add_all_cm(&m)));
     }
 
     #[bench]
     fn slow_add_all1(bench: &mut Bencher) -> ()
     {
-        let m = make_big_matrix::<RowMajor>();
+        let m = make_big_matrix::<i64, RowMajor>();
         bench.iter(|| test::black_box(add_all_cm(&m)));
     }
 
     #[bench]
     fn slow_add_all2(bench: &mut Bencher) -> ()
     {
-        let m = make_big_matrix::<ColumnMajor>();
+        let m = make_big_matrix::<i64, ColumnMajor>();
         bench.iter(|| test::black_box(add_all_rm(&m)));
     }
 
@@ -576,8 +568,8 @@ mod test {
     #[bench]
     fn slow_multiply(bench: &mut Bencher) -> ()
     {
-        let a = make_big_matrix::<ColumnMajor>();
-        let b = make_big_matrix::<RowMajor>();
+        let a = make_big_matrix::<i64, ColumnMajor>();
+        let b = make_big_matrix::<i64, RowMajor>();
 
         bench.iter(|| &a * &b);
     }
@@ -585,20 +577,103 @@ mod test {
     #[bench]
     fn fast_multiply(bench: &mut Bencher) -> ()
     {
-        let a = make_big_matrix::<RowMajor>();
-        let b = make_big_matrix::<ColumnMajor>();
+        let a = make_big_matrix::<i64, RowMajor>();
+        let b = make_big_matrix::<i64, ColumnMajor>();
 
         bench.iter(|| &a * &b);
     }
 
     #[bench]
-    fn vector_multiply_f32(bench: &mut Bencher) -> ()
+    fn check_slowfast(bencher: &mut Bencher) -> ()
     {
-        let a = make_big_matrix_f32::<RowMajor>();
-        let b = make_big_matrix_f32::<ColumnMajor>();
+        // doesn't actually run any benchmarks, but we mark this as a benchmark so that it is run
+        // with optimized build
+        use std::time::Instant;
+
+        fn timeit<F: FnMut()>(mut f: F) -> f64 {
+            let mut times = [0.0; 50];
+            for t in times.iter_mut() {
+                let now = Instant::now();
+                f();
+                let e = now.elapsed();
+                *t = e.as_secs() as f64 + e.subsec_nanos() as f64 * 1e-9;
+            }
+
+            let l = times.len() as f64;
+            times.iter().fold(0.0, |sum, val| sum + val) / l
+        }
+
+        let slow = timeit(|| {
+            let a = make_big_matrix::<i64, ColumnMajor>();
+            let b = make_big_matrix::<i64, RowMajor>();
+
+            test::black_box(&a * &b);
+        });
+
+        let fast = timeit(|| {
+            let a = make_big_matrix::<i64, RowMajor>();
+            let b = make_big_matrix::<i64, ColumnMajor>();
+
+            test::black_box(&a * &b);
+        });
+
+        assert!(slow > 3.0 * fast);
+        // TODO there has to be a better way to express these performance tests
+        // TODO write a better multiply so this test is no longer true
+    }
+
+    fn vector_multiply_impl<T>(bench: &mut Bencher) -> ()
+        where T: Mul<Output=T> + Add<Output=T> + convert::From<u16> + Default + Clone
+    {
+        let a = make_big_matrix::<T, RowMajor>();
+        let b = make_big_matrix::<T, ColumnMajor>();
 
         bench.iter(|| &a * &b);
     }
+
+    // lets us test the performance of the unvectorized versions of the same types we tested w/
+    // vectorization enabled
+    fn unvector_multiply_impl<T>(bench: &mut Bencher) -> ()
+        where T: Mul<Output=T> + Add<Output=T> + convert::From<u16> + Default + Clone
+    {
+        let a = make_big_matrix::<FakeValue<T>, RowMajor>();
+        let b = make_big_matrix::<FakeValue<T>, ColumnMajor>();
+
+        bench.iter(|| &a * &b);
+    }
+
+    // can't generate function names in a macro...........
+    macro_rules! vector_mult_bench {
+        ($n:ident, $t:ty) => {
+            #[bench]
+            fn $n(bench: &mut Bencher) -> ()
+            {
+                vector_multiply_impl::<$t>(bench)
+            }
+
+        }
+    }
+
+    macro_rules! unvector_mult_bench {
+        ($n:ident, $t:ty) => {
+            #[bench]
+            fn $n(bench: &mut Bencher) -> ()
+            {
+                unvector_multiply_impl::<$t>(bench)
+            }
+
+        }
+    }
+
+    vector_mult_bench!(vmulf32, f32);
+    vector_mult_bench!(vmuli32, i32);
+    vector_mult_bench!(vmulf64, f64);
+    vector_mult_bench!(vmuli64, i64);
+
+    unvector_mult_bench!(vmulf32_unvec, f32);
+    unvector_mult_bench!(vmuli32_unvec, i32);
+    unvector_mult_bench!(vmulf64_unvec, f64);
+    unvector_mult_bench!(vmuli64_unvec, i64);
 }
 
 // TODO implement iterators

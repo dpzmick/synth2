@@ -2,6 +2,8 @@
 #![feature(iterator_step_by)]
 #![feature(cfg_target_feature)]
 #![feature(test)]
+
+#[cfg(test)]
 extern crate test;
 
 extern crate num;
