@@ -606,38 +606,57 @@ mod benchmarks {
     #[bench]
     fn check_slowfast(bencher: &mut Bencher) -> ()
     {
-        // doesn't actually run any benchmarks, but we mark this as a benchmark so that it is run
-        // with optimized build
-        use std::time::Instant;
+        // // doesn't actually run any benchmarks, but we mark this as a benchmark so that it is run
+        // // with optimized build
+        // use std::time::Instant;
 
-        fn timeit<F: FnMut()>(mut f: F) -> f64 {
-            let mut times = [0.0; 50];
-            for t in times.iter_mut() {
-                let now = Instant::now();
-                f();
-                let e = now.elapsed();
-                *t = e.as_secs() as f64 + e.subsec_nanos() as f64 * 1e-9;
-            }
+        // fn timeit<F: FnMut()>(mut f: F) -> f64 {
+        //     let mut times = [0.0; 50];
+        //     for t in times.iter_mut() {
+        //         let now = Instant::now();
+        //         f();
+        //         let e = now.elapsed();
+        //         *t = e.as_secs() as f64 + e.subsec_nanos() as f64 * 1e-9;
+        //     }
 
-            let l = times.len() as f64;
-            times.iter().fold(0.0, |sum, val| sum + val) / l
-        }
+        //     let l = times.len() as f64;
+        //     times.iter().fold(0.0, |sum, val| sum + val) / l
+        // }
 
-        let slow = timeit(|| {
-            let a = make_big_matrix::<i64, ColumnMajor>();
-            let b = make_big_matrix::<i64, RowMajor>();
+        // let slow = timeit(|| {
+        //     let a = make_big_matrix::<i64, ColumnMajor>();
+        //     let b = make_big_matrix::<i64, RowMajor>();
 
-            test::black_box(&a * &b);
-        });
+        //     test::black_box(&a * &b);
+        // });
 
-        let fast = timeit(|| {
+        // let fast = timeit(|| {
+        //     let a = make_big_matrix::<i64, RowMajor>();
+        //     let b = make_big_matrix::<i64, ColumnMajor>();
+
+        //     test::black_box(&a * &b);
+        // });
+
+        use test::bench;
+        let bs = bench::benchmark(|b: &mut Bencher| b.iter(|| {
             let a = make_big_matrix::<i64, RowMajor>();
             let b = make_big_matrix::<i64, ColumnMajor>();
 
             test::black_box(&a * &b);
-        });
+        }));
 
-        assert!(slow > 3.0 * fast);
+        use test::stats;
+        struct BenchSamplesHack {
+            ns_iter_summ: stats::Summary,
+            mb_s: usize,
+        }
+
+        use std::mem;
+        let tricked_ya: BenchSamplesHack = unsafe { mem::transmute(bs) };
+
+        println!("{:?}", tricked_ya.ns_iter_summ.median);
+
+        // assert!(slow > 3.0 * fast);
         // TODO there has to be a better way to express these performance tests
         // - use a different benchmarks lib perhaps. This one doesn't give
         //   nearly enough insight into what's going on
@@ -653,8 +672,8 @@ mod benchmarks {
         bench.iter(|| &a * &b);
     }
 
-    // lets us test the performance of the unvectorized versions of the same types we tested w/
-    // vectorization enabled
+    // lets us test the performance of the unvectorized versions of the same
+    // types we tested w/ vectorization enabled
     fn unvector_multiply_impl<T>(bench: &mut Bencher) -> ()
         where T: Mul<Output=T> + Add<Output=T> + convert::From<u16> + Default + Clone
     {

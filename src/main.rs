@@ -8,7 +8,7 @@ use std::path::Path;
 
 fn main()
 {
-    let patch = Patch::from_file(Path::new("patches/sine.patch")).unwrap();
+    let patch = Patch::from_file(Path::new("patches/square.patch")).unwrap();
     let soundscape = Soundscape::new(16, patch);
     let client = run_audio_thread(soundscape); // important to hold a reference to the client
 

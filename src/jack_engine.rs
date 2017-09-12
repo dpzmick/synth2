@@ -112,7 +112,8 @@ impl<'a> jack::ProcessHandler for AudioHandler<'a> {
 
             }
 
-            output_buffer[i] = self.soundscape.generate();
+            let s = self.soundscape.generate();
+            output_buffer[i] = s;
         }
 
         0
@@ -149,6 +150,7 @@ impl jack::MetadataHandler for MetadataHandler {
 
 pub fn run_audio_thread(soundscape: Soundscape) -> jack::Client
 {
+
     let mut c = jack::Client::open("sine", jack::options::NO_START_SERVER)
         .unwrap()
         .0;

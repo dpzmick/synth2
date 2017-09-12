@@ -6,6 +6,7 @@ use voice::Voice;
 /// For the moment, this will just make lots of copies. There's lots of room
 /// for optimization
 /// though
+#[derive(Debug)]
 pub struct Soundscape<'a> {
     // this would be an array, but arrays are so severely limited in rust that
     // I'm using a vector.  Don't ever resize it!
