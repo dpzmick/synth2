@@ -7,9 +7,16 @@
         :frequency-input-name "frequency_in"
         :samples-output-name  "samples_out"))
 
+    (add-component config
+      (new SimpleLowPassConfig
+        :name "lowpass"
+        :input-name "samples_in"
+        :output-name  "samples_out"))
+
     (add-component config (new OnOffConfig :name "onoff"))
 
     (connect config '("voice" "midi_frequency_out") '("square" "frequency_in"))
     (connect config '("voice" "midi_gate_out")      '("onoff" "gate_in"))
-    (connect config '("square" "samples_out")       '("onoff" "samples_in"))
+    (connect config '("square" "samples_out")       '("lowpass" "samples_in"))
+    (connect config '("lowpass" "samples_out")      '("onoff" "samples_in"))
     (connect config '("onoff" "samples_out")        '("voice" "samples_in"))))

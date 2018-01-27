@@ -34,26 +34,30 @@ impl<'a> KetosConfigInput<'a> {
 
     fn get_all_decoders(&self) -> Vec<Decoder<Self>>
     {
+        use components::OnOffConfig;
+        use components::SimpleLowPassConfig;
         use components::SineWaveOscillatorConfig;
         use components::SquareWaveOscillatorConfig;
-        use components::OnOffConfig;
 
         let mut decoders = Vec::new();
+        decoders.push(self.make_decoder::<OnOffConfig>());
+        decoders.push(self.make_decoder::<SimpleLowPassConfig>());
         decoders.push(self.make_decoder::<SineWaveOscillatorConfig>());
         decoders.push(self.make_decoder::<SquareWaveOscillatorConfig>());
-        decoders.push(self.make_decoder::<OnOffConfig>());
         decoders
     }
 
     pub fn register_all_decoders(scope: &ketos::Scope)
     {
+        use components::OnOffConfig;
+        use components::SimpleLowPassConfig;
         use components::SineWaveOscillatorConfig;
         use components::SquareWaveOscillatorConfig;
-        use components::OnOffConfig;
 
+        scope.register_struct_value::<OnOffConfig>();
+        scope.register_struct_value::<SimpleLowPassConfig>();
         scope.register_struct_value::<SineWaveOscillatorConfig>();
         scope.register_struct_value::<SquareWaveOscillatorConfig>();
-        scope.register_struct_value::<OnOffConfig>();
     }
 
     /// Attempts to build a component config from some underlying config format

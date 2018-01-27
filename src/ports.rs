@@ -181,9 +181,7 @@ pub trait RealtimePortManager<'a> {
 /// A port manager manages the connections between different components. Every
 /// component can register a variety of input and output ports with the port
 /// manager. When two ports are connected, any values written to the "Input" end
-/// of the port will also be written to the "Output" end An input may only have
-/// a single incoming connection, but, an output port may be connected to many
-/// outputs
+/// of the port will also be written to the "Output" end.
 pub trait PortManager<'a>: RealtimePortManager<'a> {
     fn register_input_port(&mut self, name: &PortName)
         -> Result<InputPortHandle<'a>, PortManagerError>;

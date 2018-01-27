@@ -22,6 +22,7 @@ pub trait Component<'a>: fmt::Debug {
 /// To be constructable from a config file, a component must implement this trait
 pub trait ComponentConfig: fmt::Debug {
     /// Builds a component from a component config
+    /// TODO maybe this should move the config, since everything is cloning their configs
     fn build_component<'a, 'b>(&'b self) -> Box<Component<'a> + 'a>;
 
     /// Clones the underlying config and returns it as a trait object

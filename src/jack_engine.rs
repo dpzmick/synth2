@@ -25,7 +25,7 @@ fn midi_velocity_to_velocity(vel: u8) -> f32
 
 #[derive(Debug)]
 enum Message {
-    AudioProperties(AudioProperties)
+    AudioProperties(AudioProperties),
 }
 
 struct AudioHandler<'a> {
@@ -57,10 +57,9 @@ impl<'a> AudioHandler<'a> {
     fn handle_incoming(&mut self)
     {
         while let Ok(m) = self.incoming.try_recv() {
-            println!("message: {:?}", m);
             match m {
                 Message::AudioProperties(p) =>
-                    self.soundscape.handle_audio_property_change(p)
+                    self.soundscape.handle_audio_property_change(p),
             }
         }
     }
@@ -147,10 +146,21 @@ impl jack::MetadataHandler for MetadataHandler {
     }
 }
 
+/// The threads will continue running until this struct is dropped out of scope or until
+pub struct JackAudioThreads<'a> {
+    client: jack::Client<'a>,
+}
 
-pub fn run_audio_thread(soundscape: Soundscape) -> jack::Client
+impl<'a> JackAudioThreads<'a> {
+    pub fn shutdown(mut self) {
+        self.client.close().unwrap();
+    }
+}
+
+// TODO find a way to panic if the threads are dropped before jack is shutdown
+
+pub fn run_audio_threads(soundscape: Soundscape) -> JackAudioThreads
 {
-
     let mut c = jack::Client::open("sine", jack::options::NO_START_SERVER)
         .unwrap()
         .0;
@@ -173,6 +183,7 @@ pub fn run_audio_thread(soundscape: Soundscape) -> jack::Client
     c.connect_ports("sine:audio_out", "system:playback_1")
         .unwrap();
 
-    // TODO make this some struct so I can shut down gracefully
-    c
+    JackAudioThreads {
+        client: c,
+    }
 }

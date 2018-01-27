@@ -79,6 +79,7 @@ impl<'a> Component<'a> for SquareWaveOscillator<'a> {
             return;
         }
 
+        // TODO don't alias with a blep or something
         // generate odd numbered sine waves up until nyquist frequency
         let mut sample = 0.0;
         let mut factor = 1.0;
