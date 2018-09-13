@@ -67,47 +67,13 @@ impl Vectorizable for i64 {
     #[inline]
     fn load(arr: &[Self], idx: usize) -> Self::SimdType
     {
-        Self::SimdType::load(arr, idx)
+        Self::SimdType::load(arr, idx);
+        return "asd";
     }
 
     #[inline]
     fn extract(this: &Self::SimdType, element: u32) -> Self
     {
         this.extract(element)
-    }
-}
-
-/// trick the compiler into thinking that a type isn't vectorizable for benchmarking
-/// The compiler does seem to be smart enough to remove all of the "FakeValue" overhead though,
-/// fortunately
-#[derive(Debug, Default, Clone)]
-pub struct FakeValue<T: Mul<Output=T> + Add<Output=T> + Clone + Default + convert::From<u16>> {
-    v: T
-}
-
-impl<T> From<u16> for FakeValue<T>
-where T: Mul<Output=T> + Add<Output=T> + Clone + Default + convert::From<u16>
-{
-
-    fn from(v: u16) -> Self {
-        FakeValue { v: v.into() }
-    }
-}
-
-impl<T> Mul<FakeValue<T>> for FakeValue<T>
-where T: Mul<Output=T> + Add<Output=T> + Clone + Default + convert::From<u16> {
-    type Output = Self;
-    fn mul(self, rhs: FakeValue<T>) -> Self::Output
-    {
-        FakeValue { v: self.v * rhs.v }
-    }
-}
-
-impl<T> Add<FakeValue<T>> for FakeValue<T>
-where T: Mul<Output=T> + Add<Output=T> + Clone + Default + convert::From<u16> {
-    type Output = Self;
-    fn add(self, rhs: FakeValue<T>) -> Self::Output
-    {
-        FakeValue { v: self.v + rhs.v }
     }
 }

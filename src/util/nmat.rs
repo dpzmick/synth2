@@ -156,7 +156,6 @@ impl<T: Vectorizable> Matrix<T, RowMajor> {
     }
 }
 
-// TODO make mat[][] work?
 // TODO assert/panic range check against dim(), don't depend on vector being the
 // right size
 impl<T, O: Ordering> Index<Coordinate> for Matrix<T, O> {
@@ -357,6 +356,7 @@ where
 mod tests {
     use super::*;
     use std::convert;
+    use test;
 
     pub fn make_big_matrix<T: convert::From<u16> + Default + Clone, O: Ordering>() -> Matrix<T, O>
     {
@@ -543,42 +543,29 @@ mod tests {
         sum
     }
 
-}
-
-#[cfg(all(feature = "benchmarks", test))]
-mod benchmarks {
-    use super::*;
-    use super::tests::*;
-
-    use test;
-    use test::Bencher;
-    use std::convert;
-
-    use util::vector::FakeValue;
-
     #[bench]
-    fn fast_add_all1(bench: &mut Bencher) -> ()
+    fn fast_add_all1(bench: &mut test::Bencher) -> ()
     {
         let m = make_big_matrix::<i64, RowMajor>();
         bench.iter(|| test::black_box(add_all_rm(&m)));
     }
 
     #[bench]
-    fn fast_add_all2(bench: &mut Bencher) -> ()
+    fn fast_add_all2(bench: &mut test::Bencher) -> ()
     {
         let m = make_big_matrix::<i64, ColumnMajor>();
         bench.iter(|| test::black_box(add_all_cm(&m)));
     }
 
     #[bench]
-    fn slow_add_all1(bench: &mut Bencher) -> ()
+    fn slow_add_all1(bench: &mut test::Bencher) -> ()
     {
         let m = make_big_matrix::<i64, RowMajor>();
         bench.iter(|| test::black_box(add_all_cm(&m)));
     }
 
     #[bench]
-    fn slow_add_all2(bench: &mut Bencher) -> ()
+    fn slow_add_all2(bench: &mut test::Bencher) -> ()
     {
         let m = make_big_matrix::<i64, ColumnMajor>();
         bench.iter(|| test::black_box(add_all_rm(&m)));
@@ -586,7 +573,7 @@ mod benchmarks {
 
     // this bench should always run slower than fast_multiply
     #[bench]
-    fn slow_multiply(bench: &mut Bencher) -> ()
+    fn slow_multiply(bench: &mut test::Bencher) -> ()
     {
         let a = make_big_matrix::<i64, ColumnMajor>();
         let b = make_big_matrix::<i64, RowMajor>();
@@ -595,7 +582,7 @@ mod benchmarks {
     }
 
     #[bench]
-    fn fast_multiply(bench: &mut Bencher) -> ()
+    fn fast_multiply(bench: &mut test::Bencher) -> ()
     {
         let a = make_big_matrix::<i64, RowMajor>();
         let b = make_big_matrix::<i64, ColumnMajor>();
@@ -603,67 +590,7 @@ mod benchmarks {
         bench.iter(|| &a * &b);
     }
 
-    #[bench]
-    fn check_slowfast(bencher: &mut Bencher) -> ()
-    {
-        // // doesn't actually run any benchmarks, but we mark this as a benchmark so that it is run
-        // // with optimized build
-        // use std::time::Instant;
-
-        // fn timeit<F: FnMut()>(mut f: F) -> f64 {
-        //     let mut times = [0.0; 50];
-        //     for t in times.iter_mut() {
-        //         let now = Instant::now();
-        //         f();
-        //         let e = now.elapsed();
-        //         *t = e.as_secs() as f64 + e.subsec_nanos() as f64 * 1e-9;
-        //     }
-
-        //     let l = times.len() as f64;
-        //     times.iter().fold(0.0, |sum, val| sum + val) / l
-        // }
-
-        // let slow = timeit(|| {
-        //     let a = make_big_matrix::<i64, ColumnMajor>();
-        //     let b = make_big_matrix::<i64, RowMajor>();
-
-        //     test::black_box(&a * &b);
-        // });
-
-        // let fast = timeit(|| {
-        //     let a = make_big_matrix::<i64, RowMajor>();
-        //     let b = make_big_matrix::<i64, ColumnMajor>();
-
-        //     test::black_box(&a * &b);
-        // });
-
-        use test::bench;
-        let bs = bench::benchmark(|b: &mut Bencher| b.iter(|| {
-            let a = make_big_matrix::<i64, RowMajor>();
-            let b = make_big_matrix::<i64, ColumnMajor>();
-
-            test::black_box(&a * &b);
-        }));
-
-        use test::stats;
-        struct BenchSamplesHack {
-            ns_iter_summ: stats::Summary,
-            mb_s: usize,
-        }
-
-        use std::mem;
-        let tricked_ya: BenchSamplesHack = unsafe { mem::transmute(bs) };
-
-        println!("{:?}", tricked_ya.ns_iter_summ.median);
-
-        // assert!(slow > 3.0 * fast);
-        // TODO there has to be a better way to express these performance tests
-        // - use a different benchmarks lib perhaps. This one doesn't give
-        //   nearly enough insight into what's going on
-        // TODO write a better multiply so this test is no longer true
-    }
-
-    fn vector_multiply_impl<T>(bench: &mut Bencher) -> ()
+    fn vector_multiply_impl<T>(bench: &mut test::Bencher) -> ()
         where T: Mul<Output=T> + Add<Output=T> + convert::From<u16> + Default + Clone
     {
         let a = make_big_matrix::<T, RowMajor>();
@@ -672,22 +599,10 @@ mod benchmarks {
         bench.iter(|| &a * &b);
     }
 
-    // lets us test the performance of the unvectorized versions of the same
-    // types we tested w/ vectorization enabled
-    fn unvector_multiply_impl<T>(bench: &mut Bencher) -> ()
-        where T: Mul<Output=T> + Add<Output=T> + convert::From<u16> + Default + Clone
-    {
-        let a = make_big_matrix::<FakeValue<T>, RowMajor>();
-        let b = make_big_matrix::<FakeValue<T>, ColumnMajor>();
-
-        bench.iter(|| &a * &b);
-    }
-
-    // can't generate function names in a macro...........
-    macro_rules! vector_mult_bench {
+    macro_rules! mult_bench {
         ($n:ident, $t:ty) => {
             #[bench]
-            fn $n(bench: &mut Bencher) -> ()
+            fn $n(bench: &mut test::Bencher) -> ()
             {
                 vector_multiply_impl::<$t>(bench)
             }
@@ -695,26 +610,10 @@ mod benchmarks {
         }
     }
 
-    macro_rules! unvector_mult_bench {
-        ($n:ident, $t:ty) => {
-            #[bench]
-            fn $n(bench: &mut Bencher) -> ()
-            {
-                unvector_multiply_impl::<$t>(bench)
-            }
-
-        }
-    }
-
-    vector_mult_bench!(vmulf32, f32);
-    vector_mult_bench!(vmuli32, i32);
-    vector_mult_bench!(vmulf64, f64);
-    vector_mult_bench!(vmuli64, i64);
-
-    unvector_mult_bench!(vmulf32_unvec, f32);
-    unvector_mult_bench!(vmuli32_unvec, i32);
-    unvector_mult_bench!(vmulf64_unvec, f64);
-    unvector_mult_bench!(vmuli64_unvec, i64);
+    mult_bench!(vmulf32, f32);
+    mult_bench!(vmuli32, i32);
+    mult_bench!(vmulf64, f64);
+    mult_bench!(vmuli64, i64);
 }
 
 // TODO implement iterators

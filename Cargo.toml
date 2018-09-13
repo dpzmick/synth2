@@ -18,9 +18,6 @@ time = "0.1"
 [profile.release]
 debug = true
 
-[features]
-benchmarks = []
-
 [[bin]]
 name = "synth"
 path = "src/main.rs"

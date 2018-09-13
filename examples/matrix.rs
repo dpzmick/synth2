@@ -4,8 +4,7 @@ use synth::util::nmat::*;
 use synth::util::vector::FakeValue;
 
 const SIZE: usize = 512;
-
-type MT = f64;
+type MT = FakeValue<f64>;
 
 #[inline(never)]
 fn make_big_matrix<O: Ordering>() -> Matrix<MT, O>
